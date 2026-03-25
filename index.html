@@ -1014,7 +1014,10 @@ async function pushEntryToSheet(entry) {
 }
 
 async function deleteEntryFromSheet(id) {
-  try{ await apiCall({action:'delete',id}); }catch(e){}
+  try{
+    const r = await apiCall({action:'delete',id});
+    if(r.status!=='ok') showToast('試算表刪除失敗：'+r.message,'error');
+  }catch(e){ showToast('試算表連線失敗，請確認 Apps Script 已重新部署','error'); }
 }
 
 async function syncFoodLibrary() {
@@ -1058,7 +1061,10 @@ async function pushTemplateToSheet(t) {
 }
 
 async function deleteTemplateFromSheet(id){
-  try{ await apiCall({action:'deleteTemplate',id}); }catch(e){}
+  try{
+    const r = await apiCall({action:'deleteTemplate',id});
+    if(r.status!=='ok') showToast('試算表刪除失敗：'+r.message,'error');
+  }catch(e){ showToast('試算表連線失敗，請確認 Apps Script 已重新部署','error'); }
 }
 
 // ============================================================
