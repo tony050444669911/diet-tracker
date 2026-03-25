@@ -877,6 +877,32 @@ function fmtDateFull(str) {
 }
 function clamp(v,min,max){ return Math.min(max,Math.max(min,v)); }
 function num(v){ return parseFloat(v)||0; }
+
+// 相容舊版 Apps Script 回傳的中文 key 與日期格式
+function parseSheetDate(s) {
+  s = String(s||'');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const mon = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+  const m = s.match(/(\w{3})\s+(\d{1,2})\s+(\d{4})/);
+  if (m && mon[m[1]]) return `${m[3]}-${mon[m[1]]}-${String(m[2]).padStart(2,'0')}`;
+  try { const d=new Date(s); if(!isNaN(d)) return d.toISOString().slice(0,10); } catch(e){}
+  return s;
+}
+function parseSheetRow(r) {
+  return {
+    id:      String(r.id || r['Column 11'] || r['欄 11'] || ''),
+    date:    parseSheetDate(r.date || r['日期'] || ''),
+    food:    String(r.name || r.food || r['食物名稱'] || ''),
+    cal:     num(r.calories ?? r.cal ?? r['熱量']),
+    protein: num(r.protein ?? r['蛋白質']),
+    carbs:   num(r.carbs ?? r['碳水']),
+    fat:     num(r.fat ?? r['油脂']),
+    price:   num(r.price ?? r['價錢']),
+    emoji:   String(r.emoji || ''),
+    photo:   String(r.photo || ''),
+    detail:  String(r.detail || '')
+  };
+}
 function rnd(v,d=1){ return parseFloat(v.toFixed(d)); }
 
 // ============================================================
@@ -913,13 +939,7 @@ async function syncAllData() {
   try {
     const res = await apiCall({action:'getAll'});
     if(res.status==='ok'){
-      const remote = res.rows.map(r=>({
-        id:r.id, date:r.date, food:r.name||r.food||'',
-        cal:num(r.calories||r.cal), protein:num(r.protein),
-        carbs:num(r.carbs), fat:num(r.fat),
-        price:num(r.price), emoji:r.emoji||'',
-        photo:r.photo||'', detail:r.detail||''
-      }));
+      const remote = res.rows.map(r=>parseSheetRow(r)).filter(r=>r.id && r.food);
       const byId = {};
       allData.forEach(e=>byId[e.id]=e);
       remote.forEach(e=>{ if(e.food) byId[e.id]={...byId[e.id],...e}; });
@@ -1694,13 +1714,7 @@ async function init(){
     try{
       const res=await apiCall({action:'getAll'});
       if(res.status==='ok'){
-        const remote=res.rows.map(r=>({
-          id:r.id,date:r.date,food:r.name||r.food||'',
-          cal:num(r.calories||r.cal),protein:num(r.protein),
-          carbs:num(r.carbs),fat:num(r.fat),
-          price:num(r.price),emoji:r.emoji||'',
-          photo:r.photo||'',detail:r.detail||''
-        }));
+        const remote=res.rows.map(r=>parseSheetRow(r)).filter(r=>r.id && r.food);
         // sheet is truth: replace local non-photo fields with sheet data
         const byId={};
         remote.forEach(e=>{ if(e.id) byId[e.id]=e; });
