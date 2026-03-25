@@ -550,7 +550,7 @@ body {
 <div id="tab-library" class="tab-panel">
   <div style="padding:12px 16px 0;display:flex;justify-content:space-between;align-items:center;">
     <div style="font-size:16px;font-weight:700;">食物庫</div>
-    <button onclick="openModal('add-template-modal')" style="background:var(--accent);color:#0d1b2a;border:none;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer;font-weight:600;">+ 新增模板</button>
+    <button onclick="openModal('add-template-modal')" style="background:var(--accent);color:#0d1b2a;border:none;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer;font-weight:600;">+ 加入食物</button>
   </div>
   <div id="template-list" style="margin-top:8px;"></div>
 </div>
@@ -708,7 +708,7 @@ body {
 <div id="add-template-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('add-template-modal')">
   <div class="modal-box">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div style="font-weight:700;font-size:16px;">新增食物模板</div>
+      <div style="font-weight:700;font-size:16px;">加入食物</div>
       <button onclick="closeModal('add-template-modal')" style="background:none;border:none;cursor:pointer;color:var(--muted);">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="5" x2="17" y2="17"/><line x1="17" y1="5" x2="5" y2="17"/></svg>
       </button>
@@ -732,7 +732,7 @@ body {
         <div id="tmpl-photo-preview" style="display:none;"><img id="tmpl-photo-img" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" alt="preview"></div>
       </div>
     </div>
-    <button onclick="submitAddTemplate()" class="btn btn-accent" style="width:100%;">儲存模板</button>
+    <button onclick="submitAddTemplate()" class="btn btn-accent" style="width:100%;">儲存食物</button>
   </div>
 </div>
 
@@ -897,6 +897,8 @@ function fmtDateFull(str) {
 }
 function clamp(v,min,max){ return Math.min(max,Math.max(min,v)); }
 function num(v){ return parseFloat(v)||0; }
+function getRowId(r){ return String(r.id||r['Column 11']||r['欄 11']||r['第 1 欄']||''); }
+function getRowName(r){ return String(r.name||r.food||r['食物名稱']||r['名稱']||''); }
 
 // 相容舊版 Apps Script 回傳的中文 key 與日期格式
 function parseSheetDate(s) {
@@ -994,25 +996,16 @@ async function syncFoodLibrary() {
       const presetIds = new Set(DEFAULT_FOOD_TEMPLATES.map(t=>t.id));
       const remoteById = {};
       res.rows.forEach(r=>{
-        const rid = r.id || r['Column 11'] || r['欄 11'] || '';
-        if (!rid || rid.startsWith('config_')) return;
-        if(!presetIds.has(rid)){
-          remoteById[rid]={
-            id:rid,
-            name: r.name || r['食物名稱'] || r['名稱'] || '',
-            calories:num(r.calories || r['熱量'] || r['calories']),
-            protein:num(r.protein || r['蛋白質']),
-            carbs:num(r.carbs || r['碳水']),
-            fat:num(r.fat || r['油脂']),
-            price:num(r.price || r['價錢']),
-            emoji: r.emoji || r['圖示'] || '',
-            photo:''
-          };
-        }
+        const rid=getRowId(r);
+        if(!rid||presetIds.has(rid)||rid.startsWith('config_')) return;
+        remoteById[rid]={id:rid,name:getRowName(r),
+          calories:num(r.calories||r['熱量']),protein:num(r.protein||r['蛋白質']),
+          carbs:num(r.carbs||r['碳水']),fat:num(r.fat||r['油脂']),
+          price:num(r.price||r['價錢']),emoji:r.emoji||r['圖示']||'',photo:''};
       });
-      const presets = foodTemplates.filter(t=>presetIds.has(t.id));
-      foodTemplates.filter(t=>!presetIds.has(t.id)).forEach(t=>{ remoteById[t.id]={...t,...remoteById[t.id]}; });
-      const goalsRows2 = res.rows.filter(r => (r.id || r['Column 11'] || '') === 'config_goals');
+      const presets = foodTemplates.filter(t=>t.id&&presetIds.has(t.id));
+      foodTemplates.filter(t=>t.id&&!presetIds.has(t.id)&&!t.id.startsWith('config_')).forEach(t=>{ remoteById[t.id]={...t,...remoteById[t.id]}; });
+      const goalsRows2 = res.rows.filter(r => getRowId(r) === 'config_goals');
       if (goalsRows2.length > 0) {
         try {
           const gName2 = goalsRows2[goalsRows2.length-1].name || goalsRows2[goalsRows2.length-1]['食物名稱'] || '';
@@ -1020,7 +1013,7 @@ async function syncFoodLibrary() {
           if (g2 && g2.calories) { goals = {...goals,...g2}; saveGoalsLS(); loadSettingsForm(); }
         } catch(e) {}
       }
-      foodTemplates = [...presets,...Object.values(remoteById).filter(t=>!t.id.startsWith('config_'))];
+      foodTemplates = [...presets,...Object.values(remoteById)];
       saveTemplates();
       renderLibraryTab();
       showToast('食物庫已同步','success');
@@ -1419,9 +1412,9 @@ function renderLibraryTab(){
   const list=document.getElementById('template-list');
   list.innerHTML='';
   foodTemplates.forEach(t=>{
+    if(!t.id||!t.name||t.id.startsWith('config_')) return;
     const card=document.createElement('div');
     card.className='template-card';
-    const safeId=t.id.replace(/['"]/g,'');
     card.innerHTML=`
       <div style="width:46px;height:46px;background:var(--surface2);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px;border:1px solid var(--border);">
         ${t.emoji||`<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="var(--border)" stroke-width="1.8"><circle cx="11" cy="11" r="8"/></svg>`}
@@ -1560,7 +1553,7 @@ function renderAnalysisTab(){
 }
 
 function getLast7Days(){
-  const d=[]; for(let i=6;i>=0;i--){ const dt=new Date(); dt.setDate(dt.getDate()-i); d.push(dt.toISOString().slice(0,10)); } return d;
+  const d=[]; for(let i=6;i>=0;i--){ const dt=new Date(); dt.setDate(dt.getDate()-i); d.push(localDateStr(dt)); } return d;
 }
 
 function getDateRange(range){
@@ -1568,10 +1561,10 @@ function getDateRange(range){
   if(range==='month'){
     const y=today.getFullYear(),m=today.getMonth();
     const dim=new Date(y,m+1,0).getDate();
-    for(let i=1;i<=dim;i++){ const dt=new Date(y,m,i); dates.push(dt.toISOString().slice(0,10)); }
+    for(let i=1;i<=dim;i++){ dates.push(localDateStr(new Date(y,m,i))); }
   } else {
     const n=parseInt(range)||7;
-    for(let i=n-1;i>=0;i--){ const dt=new Date(); dt.setDate(dt.getDate()-i); dates.push(dt.toISOString().slice(0,10)); }
+    for(let i=n-1;i>=0;i--){ const dt=new Date(); dt.setDate(dt.getDate()-i); dates.push(localDateStr(dt)); }
   }
   return dates;
 }
@@ -1590,17 +1583,30 @@ function chartDefaults(){
 
 function renderWeeklyChart(){
   const days=getLast7Days();
-  const data=days.map(d=>Math.round(getDayTotals(d).cal));
+  const totals=days.map(d=>getDayTotals(d));
   const ctx=document.getElementById('weekly-chart');
   if(charts.weekly) charts.weekly.destroy();
   charts.weekly=new Chart(ctx,{
     type:'bar',
-    data:{labels:days.map(d=>fmtDate(d)),datasets:[{data,
-      backgroundColor:data.map(v=>v>goals.calories?'rgba(239,71,111,0.7)':'rgba(72,202,228,0.7)'),
-      borderColor:data.map(v=>v>goals.calories?'#ef476f':'#48cae4'),
-      borderWidth:1,borderRadius:6}]},
-    options:{responsive:true,...chartDefaults(),
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.y} kcal`}}}}
+    data:{
+      labels:days.map(d=>fmtDate(d)),
+      datasets:[
+        {label:'蛋白質',data:totals.map(t=>Math.round(t.protein*4)),backgroundColor:'rgba(144,224,239,0.85)',stack:'s'},
+        {label:'碳水',data:totals.map(t=>Math.round(t.carbs*4)),backgroundColor:'rgba(249,199,79,0.85)',stack:'s'},
+        {label:'油脂',data:totals.map(t=>Math.round(t.fat*9)),backgroundColor:'rgba(255,138,128,0.85)',stack:'s'},
+      ]
+    },
+    options:{
+      responsive:true,
+      scales:{
+        x:{stacked:true,ticks:{color:'#7ba3c4',font:{size:11}},grid:{color:'#2d4a6e'}},
+        y:{stacked:true,ticks:{color:'#7ba3c4',font:{size:11}},grid:{color:'#2d4a6e'}}
+      },
+      plugins:{
+        legend:{display:true,labels:{color:'#7ba3c4',font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y} kcal`}}
+      }
+    }
   });
 }
 
@@ -1807,26 +1813,26 @@ async function init(){
         const presetIds=new Set(DEFAULT_FOOD_TEMPLATES.map(t=>t.id));
         const remoteById={};
         res2.rows.forEach(r=>{
-          if(!presetIds.has(r.id)){
-            remoteById[r.id]={id:r.id,name:r.name,calories:num(r.calories),
-              protein:num(r.protein),carbs:num(r.carbs),fat:num(r.fat),
-              price:num(r.price),emoji:r.emoji||'',photo:''};
-          }
+          const rid=getRowId(r);
+          if(!rid||presetIds.has(rid)||rid.startsWith('config_')) return;
+          remoteById[rid]={id:rid,name:getRowName(r),
+            calories:num(r.calories||r['熱量']),protein:num(r.protein||r['蛋白質']),
+            carbs:num(r.carbs||r['碳水']),fat:num(r.fat||r['油脂']),
+            price:num(r.price||r['價錢']),emoji:r.emoji||r['圖示']||'',photo:''};
         });
-        // Extract goals from special config row
-        const goalsRows = res2.rows.filter(r => (r.id || r['Column 11'] || '') === 'config_goals');
-        if (goalsRows.length > 0) {
-          try {
-            const gName = goalsRows[goalsRows.length-1].name || goalsRows[goalsRows.length-1]['食物名稱'] || '';
-            const g = JSON.parse(gName);
-            if (g && g.calories) { goals = {...goals, ...g}; saveGoalsLS(); }
-          } catch(e) {}
+        // Extract goals
+        const goalsRows=res2.rows.filter(r=>getRowId(r)==='config_goals');
+        if(goalsRows.length>0){
+          try{
+            const gName=goalsRows[goalsRows.length-1].name||goalsRows[goalsRows.length-1]['食物名稱']||'';
+            const g=JSON.parse(gName);
+            if(g&&g.calories){goals={...goals,...g};saveGoalsLS();}
+          }catch(e){}
         }
-        // Filter out config rows from templates
-        res2.rows.filter(r => (r.id || r['Column 11'] || '').startsWith('config_')).forEach(r => { delete remoteById[r.id]; });
-        const presets=foodTemplates.filter(t=>presetIds.has(t.id));
-        foodTemplates.filter(t=>!presetIds.has(t.id)&&!t.id.startsWith('config_')).forEach(t=>{ remoteById[t.id]={...t,...remoteById[t.id]}; });
-        foodTemplates=[...presets,...Object.values(remoteById).filter(t=>!t.id.startsWith('config_'))];
+        // Merge local user templates
+        const presets=foodTemplates.filter(t=>t.id&&presetIds.has(t.id));
+        foodTemplates.filter(t=>t.id&&!presetIds.has(t.id)&&!t.id.startsWith('config_')).forEach(t=>{remoteById[t.id]={...t,...remoteById[t.id]};});
+        foodTemplates=[...presets,...Object.values(remoteById)];
         saveTemplates();
       }
     }catch(e){}
