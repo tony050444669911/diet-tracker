@@ -92,12 +92,37 @@ body {
   border-radius: 99px;
   transition: width 0.4s ease;
 }
+.swipe-wrap {
+  position: relative;
+  overflow: hidden;
+  margin: 8px 16px;
+  border-radius: 12px;
+}
+.swipe-del-btn {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 80px;
+  background: var(--danger);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Noto Sans TC', sans-serif;
+  border-radius: 0 12px 12px 0;
+  flex-shrink: 0;
+}
 .food-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  margin: 8px 16px;
+  margin: 0;
+  transition: transform 0.2s ease;
+  position: relative;
+  z-index: 1;
 }
 .modal-overlay {
   display: none;
@@ -299,10 +324,13 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  margin: 8px 16px;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 10px;
+  transition: transform 0.2s ease;
+  position: relative;
+  z-index: 1;
 }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--surface); }
@@ -804,9 +832,9 @@ function doGet(e) {
     return jsonResponse({status:'ok'});
   }
   if (action === 'delete') {
-    const rows=sheet.getDataRange().getValues(), h=rows[0], col=h.indexOf('id');
-    for(let i=rows.length-1;i>=1;i--) if(String(rows[i][col])===String(p.id)){sheet.deleteRow(i+1);break;}
-    return jsonResponse({status:'ok'});
+    const range = sheet.createTextFinder(p.id).matchEntireCell(true).findNext();
+    if (range) sheet.deleteRow(range.getRow());
+    return jsonResponse({status:'ok', deleted: !!range});
   }
   if (action === 'getAllTemplates') {
     const rows=tSheet.getDataRange().getValues();
@@ -819,9 +847,9 @@ function doGet(e) {
     return jsonResponse({status:'ok'});
   }
   if (action === 'deleteTemplate') {
-    const rows=tSheet.getDataRange().getValues(), h=rows[0], col=h.indexOf('id');
-    for(let i=rows.length-1;i>=1;i--) if(String(rows[i][col])===String(p.id)){tSheet.deleteRow(i+1);break;}
-    return jsonResponse({status:'ok'});
+    const range = tSheet.createTextFinder(p.id).matchEntireCell(true).findNext();
+    if (range) tSheet.deleteRow(range.getRow());
+    return jsonResponse({status:'ok', deleted: !!range});
   }
   return jsonResponse({status:'error',message:'unknown action'});
 }
@@ -880,7 +908,7 @@ const DEFAULT_FOOD_TEMPLATES = [
 // UTILS
 // ============================================================
 function todayStr() {
-  return new Date().toISOString().slice(0,10);
+  return localDateStr(new Date());
 }
 function localDateStr(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
 function genId() {
@@ -984,7 +1012,13 @@ async function pushEntryToSheet(entry) {
 }
 
 async function deleteEntryFromSheet(id) {
-  try{ await apiCall({action:'delete',id}); }catch(e){}
+  console.log('[deleteEntry] id=', id);
+  try{
+    const r = await apiCall({action:'delete',id});
+    console.log('[deleteEntry] resp=', r);
+    if(r.status!=='ok') showToast('試算表刪除失敗：'+r.message,'error');
+    else if(!r.deleted) showToast('試算表找不到該筆資料（已是最新）','info');
+  }catch(e){ showToast('試算表連線失敗，請確認 Apps Script 已重新部署','error'); }
 }
 
 async function syncFoodLibrary() {
@@ -1028,7 +1062,13 @@ async function pushTemplateToSheet(t) {
 }
 
 async function deleteTemplateFromSheet(id){
-  try{ await apiCall({action:'deleteTemplate',id}); }catch(e){}
+  console.log('[deleteTemplate] id=', id);
+  try{
+    const r = await apiCall({action:'deleteTemplate',id});
+    console.log('[deleteTemplate] resp=', r);
+    if(r.status!=='ok') showToast('試算表刪除失敗：'+r.message,'error');
+    else if(!r.deleted) showToast('試算表找不到該筆資料（已是最新）','info');
+  }catch(e){ showToast('試算表連線失敗，請確認 Apps Script 已重新部署','error'); }
 }
 
 // ============================================================
@@ -1201,12 +1241,6 @@ function buildEntryCard(entry){
       </div>
     </div>`;
 
-  const delBtn = card.querySelector('.del-entry-btn');
-  setupLongPress(delBtn, ()=>{
-    deleteTarget = { type:'entry', id:entry.id, name:entry.food };
-    document.getElementById('delete-confirm-text').textContent=`確定要刪除「${entry.food}」嗎？`;
-    openModal('delete-confirm-modal');
-  });
   card.querySelector('.rename-entry-btn').addEventListener('click', ()=>openRename(entry));
 
   if(isComposite){
@@ -1215,8 +1249,98 @@ function buildEntryCard(entry){
       renderDailyTab();
     });
   }
-  return card;
+
+  // Wrap in swipe container
+  const wrap = document.createElement('div');
+  wrap.className = 'swipe-wrap';
+  wrap.innerHTML = '<button class="swipe-del-btn">刪除</button>';
+  wrap.appendChild(card);
+  setupSwipeDelete(wrap, card, ()=>{
+    deleteTarget = { type:'entry', id:entry.id, name:entry.food };
+    document.getElementById('delete-confirm-text').textContent=`確定要刪除「${entry.food}」嗎？`;
+    openModal('delete-confirm-modal');
+  });
+  return wrap;
 }
+
+// ============================================================
+// SWIPE TO DELETE
+// ============================================================
+let activeSwipeCard = null;
+
+function closeActiveSwipe() {
+  if (activeSwipeCard) {
+    activeSwipeCard.style.transform = 'translateX(0)';
+    activeSwipeCard = null;
+  }
+}
+
+function setupSwipeDelete(wrap, inner, onDeleteClick) {
+  let sx=0, sy=0, dx=0, moved=false, dragging=false;
+  const W = 80;
+
+  function onStart(cx, cy) {
+    if (activeSwipeCard && activeSwipeCard !== inner) closeActiveSwipe();
+    sx=cx; sy=cy; dx=0; moved=false;
+  }
+  function onMove(cx, cy, preventDefault) {
+    if (!moved && Math.abs(cy-sy) > Math.abs(cx-sx)) return;
+    moved=true;
+    dx = Math.min(0, Math.max(-W, cx-sx));
+    inner.style.transform = `translateX(${dx}px)`;
+    if (preventDefault) preventDefault();
+  }
+  function onEnd() {
+    if (dx < -W/2) {
+      inner.style.transform = `translateX(-${W}px)`;
+      activeSwipeCard = inner;
+    } else {
+      inner.style.transform = 'translateX(0)';
+      activeSwipeCard = null;
+    }
+    dx=0; moved=false; dragging=false;
+  }
+
+  // Touch
+  inner.addEventListener('touchstart', e=>{
+    onStart(e.touches[0].clientX, e.touches[0].clientY);
+  }, {passive:true});
+  inner.addEventListener('touchmove', e=>{
+    onMove(e.touches[0].clientX, e.touches[0].clientY, ()=>e.preventDefault());
+  }, {passive:false});
+  inner.addEventListener('touchend', onEnd);
+
+  // Mouse (desktop)
+  inner.addEventListener('mousedown', e=>{
+    dragging=true;
+    onStart(e.clientX, e.clientY);
+  });
+  document.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    onMove(e.clientX, e.clientY, null);
+  });
+  document.addEventListener('mouseup', e=>{
+    if(!dragging) return;
+    onEnd();
+  });
+
+  wrap.querySelector('.swipe-del-btn').addEventListener('click', ()=>{
+    closeActiveSwipe();
+    onDeleteClick();
+  });
+}
+
+// Close swipe when tapping/clicking outside
+document.addEventListener('touchstart', e=>{
+  if (activeSwipeCard && !activeSwipeCard.closest('.swipe-wrap')?.contains(e.target)) {
+    closeActiveSwipe();
+  }
+}, {passive:true});
+document.addEventListener('mousedown', e=>{
+  if (activeSwipeCard && !activeSwipeCard.closest('.swipe-wrap')?.contains(e.target)) {
+    closeActiveSwipe();
+  }
+});
 
 // ============================================================
 // LONG PRESS
@@ -1429,23 +1553,24 @@ function renderLibraryTab(){
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
-        <button class="del-tmpl-btn" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;" title="長按刪除">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="5 7 15 7"/><line x1="8" y1="7" x2="8" y2="15"/><line x1="12" y1="7" x2="12" y2="15"/><path d="M7 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><rect x="4" y="7" width="12" height="9" rx="2"/></svg>
-        </button>
         <button class="add-meal-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--accent);white-space:nowrap;font-family:'Noto Sans TC',sans-serif;">+ 加入餐點</button>
       </div>`;
-    setupLongPress(card.querySelector('.del-tmpl-btn'),()=>{
-      deleteTarget={type:'template',id:t.id,name:t.name};
-      document.getElementById('delete-confirm-text').textContent=`確定要刪除「${t.name}」嗎？`;
-      openModal('delete-confirm-modal');
-    });
     card.querySelector('.add-meal-btn').addEventListener('click',()=>{
       servingTarget=t;
       document.getElementById('serving-food-name').textContent=t.name+` (${rnd(t.calories,1)} kcal / 份)`;
       document.getElementById('serving-input').value='1';
       openModal('serving-modal');
     });
-    list.appendChild(card);
+    const wrap=document.createElement('div');
+    wrap.className='swipe-wrap';
+    wrap.innerHTML='<button class="swipe-del-btn">刪除</button>';
+    wrap.appendChild(card);
+    setupSwipeDelete(wrap,card,()=>{
+      deleteTarget={type:'template',id:t.id,name:t.name};
+      document.getElementById('delete-confirm-text').textContent=`確定要刪除「${t.name}」嗎？`;
+      openModal('delete-confirm-modal');
+    });
+    list.appendChild(wrap);
   });
 }
 
@@ -1786,6 +1911,7 @@ function doClearData(){
 // INIT
 // ============================================================
 async function init(){
+  currentDate = todayStr();
   loadAll();
   updateDateDisplay();
   updateSheetStatus();
