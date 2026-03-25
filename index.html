@@ -461,7 +461,7 @@
 <div id="panel-daily" class="panel active px-5 pt-4 pb-32 scroll-area" style="max-height:calc(100vh - 300px); overflow-y:auto">
   <!-- API sync button -->
   <div class="api-note mb-4 flex items-center justify-between">
-    <span>🔗 Google 試算表尚未連接</span>
+    <span id="sheetStatus">🔗 Google 試算表尚未連接</span>
     <button onclick="syncFromSheet()" style="background:rgba(200,249,110,0.15);color:var(--accent);border:1px solid rgba(200,249,110,0.3);border-radius:8px;padding:4px 10px;font-size:0.72rem;cursor:pointer;font-family:inherit">同步</button>
   </div>
   <!-- Date switcher -->
@@ -630,8 +630,21 @@ function init() {
   const d = new Date();
   document.getElementById('todayDate').textContent =
     d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0');
+  updateConnectionStatus();
   updateAll();
   buildWeekChart();
+}
+function updateConnectionStatus() {
+  const url = localStorage.getItem('sheetApiUrl');
+  const el = document.getElementById('sheetStatus');
+  if (!el) return;
+  if (url) {
+    el.textContent = '✓ 已連接 Google 試算表';
+    el.style.color = 'var(--accent)';
+  } else {
+    el.textContent = '🔗 Google 試算表尚未連接';
+    el.style.color = '';
+  }
 }
 function dateKey(d) {
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -799,10 +812,30 @@ function addFoodEntry() {
   };
   allData.push(entry);
   saveData();
+  pushEntryToSheet(entry);
   closeModal();
   clearInputs();
   updateAll();
   buildWeekChart();
+}
+function pushEntryToSheet(entry) {
+  const url = localStorage.getItem('sheetApiUrl');
+  if (!url) return;
+  const row = {
+    '日期': entry.date,
+    '食物名稱': entry.name,
+    '熱量': entry.calories,
+    '蛋白質': entry.protein,
+    '碳水': entry.carbs,
+    '油脂': entry.fat,
+    '價錢': entry.price,
+  };
+  fetch(url, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(row),
+  }).catch(() => {}); // no-cors 不會有回傳，靜默失敗
 }
 function deleteEntry(id) {
   allData = allData.filter(e => e.id !== id);
@@ -870,6 +903,7 @@ function saveApiUrl() {
       document.getElementById('apiTestResult').textContent = `✓ 連線成功，取得 ${data.length} 筆資料`;
       document.getElementById('apiTestResult').style.color = 'var(--accent)';
       importSheetData(data);
+      updateConnectionStatus();
     })
     .catch(() => {
       document.getElementById('apiTestResult').textContent = '✗ 連線失敗，請確認 Apps Script 已部署且允許匿名存取';
