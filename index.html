@@ -832,10 +832,9 @@ function doGet(e) {
     return jsonResponse({status:'ok'});
   }
   if (action === 'delete') {
-    const rows=sheet.getDataRange().getValues(), h=rows[0];
-    let col=h.indexOf('id'); if(col<0)col=h.indexOf('Column 11'); if(col<0)col=0;
-    for(let i=rows.length-1;i>=1;i--) if(String(rows[i][col])===String(p.id)){sheet.deleteRow(i+1);break;}
-    return jsonResponse({status:'ok'});
+    const range = sheet.createTextFinder(p.id).matchEntireCell(true).findNext();
+    if (range) sheet.deleteRow(range.getRow());
+    return jsonResponse({status:'ok', deleted: !!range});
   }
   if (action === 'getAllTemplates') {
     const rows=tSheet.getDataRange().getValues();
@@ -848,10 +847,9 @@ function doGet(e) {
     return jsonResponse({status:'ok'});
   }
   if (action === 'deleteTemplate') {
-    const rows=tSheet.getDataRange().getValues(), h=rows[0];
-    let col=h.indexOf('id'); if(col<0)col=h.indexOf('第 1 欄'); if(col<0)col=0;
-    for(let i=rows.length-1;i>=1;i--) if(String(rows[i][col])===String(p.id)){tSheet.deleteRow(i+1);break;}
-    return jsonResponse({status:'ok'});
+    const range = tSheet.createTextFinder(p.id).matchEntireCell(true).findNext();
+    if (range) tSheet.deleteRow(range.getRow());
+    return jsonResponse({status:'ok', deleted: !!range});
   }
   return jsonResponse({status:'error',message:'unknown action'});
 }
@@ -1014,9 +1012,12 @@ async function pushEntryToSheet(entry) {
 }
 
 async function deleteEntryFromSheet(id) {
+  console.log('[deleteEntry] id=', id);
   try{
     const r = await apiCall({action:'delete',id});
+    console.log('[deleteEntry] resp=', r);
     if(r.status!=='ok') showToast('試算表刪除失敗：'+r.message,'error');
+    else if(!r.deleted) showToast('試算表找不到該筆資料（已是最新）','info');
   }catch(e){ showToast('試算表連線失敗，請確認 Apps Script 已重新部署','error'); }
 }
 
@@ -1061,9 +1062,12 @@ async function pushTemplateToSheet(t) {
 }
 
 async function deleteTemplateFromSheet(id){
+  console.log('[deleteTemplate] id=', id);
   try{
     const r = await apiCall({action:'deleteTemplate',id});
+    console.log('[deleteTemplate] resp=', r);
     if(r.status!=='ok') showToast('試算表刪除失敗：'+r.message,'error');
+    else if(!r.deleted) showToast('試算表找不到該筆資料（已是最新）','info');
   }catch(e){ showToast('試算表連線失敗，請確認 Apps Script 已重新部署','error'); }
 }
 
