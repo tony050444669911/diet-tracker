@@ -60,8 +60,10 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
     padding: 14px 16px; display: flex; align-items: center; gap: 14px;
     transition: all 0.15s; animation: slideIn 0.3s ease forwards;
+    user-select: none; -webkit-user-select: none;
   }
   .food-card:hover { background: var(--surface2); border-color: #3a5f8a; transform: translateY(-1px); }
+  .food-card.pressing { background: rgba(239,71,111,0.08); border-color: rgba(239,71,111,0.3); transition: all 0.6s; }
   @keyframes slideIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
   .food-icon { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
   .calories-badge { background:rgba(72,202,228,0.12); color:var(--accent); font-family:'DM Mono',monospace; font-size:0.75rem; padding:3px 8px; border-radius:6px; white-space:nowrap; }
@@ -230,6 +232,21 @@
 <input type="file" accept="image/*" capture="environment" id="photoInputEntry" style="display:none" onchange="onEntryPhotoSelected(this)">
 <input type="file" accept="image/*" capture="environment" id="photoInputTemplate" style="display:none" onchange="onTemplatePhotoSelected(this)">
 
+<!-- MEAL BAR (Feature 1) -->
+<div id="mealBar" style="position:fixed;bottom:56px;left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:398px;background:var(--surface2);border:1px solid var(--accent);border-radius:16px;padding:12px 16px;display:none;align-items:center;justify-content:space-between;z-index:150;">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="font-size:1.2rem">🛒</span>
+    <div>
+      <div id="mealBarCount" style="font-size:0.82rem;color:var(--text);font-weight:600"></div>
+      <div id="mealBarCals" style="font-size:0.72rem;color:var(--accent)" class="mono"></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button onclick="openMealList()" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:7px 12px;font-size:0.78rem;cursor:pointer;font-family:inherit;">查看</button>
+    <button onclick="commitMeal()" style="background:var(--accent);color:#0d1b2a;border:none;border-radius:10px;padding:7px 14px;font-size:0.78rem;font-weight:700;cursor:pointer;font-family:inherit;">記錄餐點</button>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════
      SIDEBAR
 ══════════════════════════════════════════ -->
@@ -287,6 +304,7 @@
         <span class="mono" id="proteinTotal" style="color:var(--muted)">0g</span>
       </div>
       <div class="macro-bar"><div class="macro-bar-fill" id="proteinBar" style="background:var(--accent3);width:0%"></div></div>
+      <div id="proteinGoalText" style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right"></div>
     </div>
     <div style="flex:1">
       <div class="flex justify-between mb-1" style="font-size:0.72rem;">
@@ -294,6 +312,7 @@
         <span class="mono" id="carbsTotal" style="color:var(--muted)">0g</span>
       </div>
       <div class="macro-bar"><div class="macro-bar-fill" id="carbsBar" style="background:var(--accent2);width:0%"></div></div>
+      <div id="carbsGoalText" style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right"></div>
     </div>
     <div style="flex:1">
       <div class="flex justify-between mb-1" style="font-size:0.72rem;">
@@ -301,6 +320,7 @@
         <span class="mono" id="fatTotal" style="color:var(--muted)">0g</span>
       </div>
       <div class="macro-bar"><div class="macro-bar-fill" id="fatBar" style="background:var(--danger);width:0%"></div></div>
+      <div id="fatGoalText" style="font-size:0.65rem;color:var(--muted);margin-top:2px;text-align:right"></div>
     </div>
   </div>
   <div class="flex items-center justify-between mt-3 pt-3" style="border-top:1px solid var(--border)">
@@ -447,6 +467,7 @@
     <input type="text" class="input-field mb-3" id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
     <button class="add-btn" onclick="saveApiUrl()" style="font-size:0.85rem;padding:12px">儲存並測試連線</button>
     <div id="apiTestResult" style="margin-top:10px;font-size:0.78rem;color:var(--muted)"></div>
+    <button onclick="syncTemplatesFromSheet()" style="margin-top:10px;background:rgba(144,224,239,0.1);color:var(--accent3);border:1px solid rgba(144,224,239,0.3);border-radius:10px;padding:10px 16px;width:100%;font-family:inherit;font-size:0.85rem;cursor:pointer;">同步食物庫</button>
   </div>
   <div class="section-label">每日目標設定</div>
   <div class="stat-card mb-4">
@@ -460,6 +481,14 @@
         <input type="number" class="input-field" id="goalProtein" placeholder="150" />
       </div>
       <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:6px">碳水目標 (g)</label>
+        <input type="number" class="input-field" id="goalCarbs" placeholder="250" />
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:6px">脂肪目標 (g)</label>
+        <input type="number" class="input-field" id="goalFat" placeholder="65" />
+      </div>
+      <div>
         <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:6px">每日預算 (NT$)</label>
         <input type="number" class="input-field" id="goalBudget" placeholder="300" />
       </div>
@@ -469,7 +498,7 @@
   <div class="section-label">資料管理</div>
   <div class="stat-card">
     <button onclick="exportData()" style="background:rgba(144,224,239,0.1);color:var(--accent3);border:1px solid rgba(144,224,239,0.3);border-radius:10px;padding:10px 16px;width:100%;font-family:inherit;font-size:0.85rem;cursor:pointer;margin-bottom:10px">匯出 JSON 資料</button>
-    <button onclick="clearAllData()" style="background:rgba(239,71,111,0.1);color:var(--danger);border:1px solid rgba(239,71,111,0.3);border-radius:10px;padding:10px 16px;width:100%;font-family:inherit;font-size:0.85rem;cursor:pointer">清除所有本地資料</button>
+    <button onclick="showClearConfirm('清除所有本地飲食記錄（不影響試算表資料）', function(){ allData=[]; saveData(); updateAll(); })" style="background:rgba(239,71,111,0.1);color:var(--danger);border:1px solid rgba(239,71,111,0.3);border-radius:10px;padding:10px 16px;width:100%;font-family:inherit;font-size:0.85rem;cursor:pointer">清除所有本地資料</button>
   </div>
 </div>
 
@@ -523,7 +552,10 @@
           <input type="number" class="input-field" id="inputFat" placeholder="15" />
         </div>
       </div>
-      <button class="add-btn mt-1" onclick="addFoodEntry()">＋ 新增</button>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button class="add-btn" onclick="addFoodEntry()" style="flex:1">＋ 記錄</button>
+        <button onclick="addToMeal()" style="flex:1;background:var(--surface2);color:var(--accent);border:1px solid var(--accent);border-radius:14px;padding:15px;font-family:'Noto Sans TC',sans-serif;font-size:0.9rem;font-weight:700;cursor:pointer;transition:all 0.2s;">加入餐點</button>
+      </div>
     </div>
   </div>
 </div>
@@ -592,6 +624,54 @@
 </div>
 
 <!-- ══════════════════════════════════════════
+     MODAL: MEAL LIST (Feature 1)
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="mealListModal" onclick="closeModalOnBg(event,'mealListModal')">
+  <div class="modal-sheet">
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:1rem;font-weight:700">🛒 餐點明細</div>
+      <button onclick="clearMeal()" style="background:rgba(239,71,111,0.12);color:var(--danger);border:1px solid rgba(239,71,111,0.3);border-radius:8px;padding:5px 12px;font-size:0.78rem;cursor:pointer;font-family:inherit;">清空</button>
+    </div>
+    <div id="mealListItems" style="margin-bottom:16px"></div>
+    <button onclick="commitMeal()" style="width:100%;background:var(--accent);color:#0d1b2a;border:none;border-radius:14px;padding:15px;font-family:'Noto Sans TC',sans-serif;font-size:0.9rem;font-weight:700;cursor:pointer;">記錄餐點</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: DELETE CONFIRM (Feature 2)
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="deleteConfirmModal">
+  <div class="modal-sheet" style="text-align:center">
+    <div style="font-size:2rem;margin-bottom:12px">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+    </div>
+    <div id="deleteConfirmName" style="font-weight:600;margin-bottom:8px;font-size:1rem"></div>
+    <div style="color:var(--muted);font-size:0.82rem;margin-bottom:20px">確定要刪除這筆記錄嗎？</div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeModal('deleteConfirmModal')" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);cursor:pointer;font-size:0.9rem;font-family:inherit;">取消</button>
+      <button id="deleteConfirmBtn" style="flex:1;padding:12px;background:var(--danger);border:none;border-radius:12px;color:white;font-weight:700;cursor:pointer;font-size:0.9rem;font-family:inherit;">刪除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: CLEAR CONFIRM (Feature 3)
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="clearConfirmModal" onclick="closeModalOnBg(event,'clearConfirmModal')">
+  <div class="modal-sheet">
+    <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px;color:var(--danger)">⚠️ 確認清除資料</div>
+    <div id="clearConfirmDesc" style="color:var(--muted);font-size:0.85rem;margin-bottom:16px"></div>
+    <div style="margin-bottom:12px;font-size:0.82rem;color:var(--text)">請輸入「確認清除」以確認：</div>
+    <input type="text" id="clearConfirmInput" class="input-field" placeholder="確認清除" oninput="checkClearConfirm()">
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button onclick="closeModal('clearConfirmModal')" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);cursor:pointer;font-family:inherit;">取消</button>
+      <button id="clearConfirmBtn" disabled style="flex:1;padding:12px;background:var(--danger);border:none;border-radius:12px;color:white;font-weight:700;cursor:pointer;opacity:0.4;font-family:inherit;" onclick="executeClearAction()">確認清除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      JS
 ══════════════════════════════════════════ -->
 <script>
@@ -628,11 +708,21 @@ const DEFAULT_FOOD_TEMPLATES = [
 // ─── State ──────────────────────────────────
 let currentDate = new Date();
 let allData = JSON.parse(localStorage.getItem('dietData') || '[]');
-let goals = JSON.parse(localStorage.getItem('dietGoals') || '{"calories":2000,"protein":150,"budget":300}');
+let goals = JSON.parse(localStorage.getItem('dietGoals') || '{"calories":2000,"protein":150,"carbs":250,"fat":65,"budget":300}');
+// Ensure carbs/fat goals exist for old data
+if (!goals.carbs) goals.carbs = 250;
+if (!goals.fat) goals.fat = 65;
+
 let foodTemplates = JSON.parse(localStorage.getItem('foodTemplates') || 'null');
 let activeTemplate = null;
 let currentEntryPhoto = '';
 let currentTemplatePhoto = '';
+
+// Feature 1: Meal Cart
+let currentMeal = [];
+
+// Feature 3: Clear confirm
+let pendingClearAction = null;
 
 // ─── Nutrient Chart State ────────────────────
 let nutrientChart = null;
@@ -644,7 +734,6 @@ let acIndex = -1;
 
 // ─── Init ────────────────────────────────────
 function init() {
-  // Initialize default templates if first run
   if (foodTemplates === null) {
     foodTemplates = DEFAULT_FOOD_TEMPLATES;
     saveTemplates();
@@ -688,6 +777,13 @@ function showToast(msg, type = '') {
   t._timer = setTimeout(() => t.classList.remove('show'), 2500);
 }
 
+// ─── Loading ─────────────────────────────────
+function showLoading(show) {
+  const el = document.getElementById('loadingOverlay');
+  if (show) el.classList.add('show');
+  else el.classList.remove('show');
+}
+
 // ─── Date helpers ────────────────────────────
 function dateKey(d) {
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -726,16 +822,39 @@ function updateAll() {
   const carb  = sumField(entries,'carbs');
   const fat   = sumField(entries,'fat');
   const price = sumField(entries,'price');
+
   document.getElementById('totalCalories').textContent = Math.round(cal);
-  document.getElementById('proteinTotal').textContent  = Math.round(pro)+'g';
-  document.getElementById('carbsTotal').textContent    = Math.round(carb)+'g';
-  document.getElementById('fatTotal').textContent      = Math.round(fat)+'g';
   document.getElementById('totalPrice').textContent    = 'NT$' + Math.round(price);
+
   const gc = goals.calories || 2000;
   const gp = goals.protein  || 150;
+  const gcarb = goals.carbs || 250;
+  const gfat  = goals.fat   || 65;
+
+  // Protein bar + goal text
+  const proOver = pro > gp;
+  document.getElementById('proteinTotal').textContent = Math.round(pro)+'g';
   document.getElementById('proteinBar').style.width = Math.min(pro/gp*100,100)+'%';
-  document.getElementById('carbsBar').style.width   = Math.min(carb/(gc*0.5/4)*100,100)+'%';
-  document.getElementById('fatBar').style.width     = Math.min(fat/(gc*0.3/9)*100,100)+'%';
+  document.getElementById('proteinBar').style.background = proOver ? 'var(--danger)' : 'var(--accent3)';
+  document.getElementById('proteinGoalText').textContent = `${Math.round(pro)}g / ${gp}g`;
+  document.getElementById('proteinGoalText').style.color = proOver ? 'var(--danger)' : 'var(--muted)';
+
+  // Carbs bar + goal text
+  const carbOver = carb > gcarb;
+  document.getElementById('carbsTotal').textContent = Math.round(carb)+'g';
+  document.getElementById('carbsBar').style.width = Math.min(carb/gcarb*100,100)+'%';
+  document.getElementById('carbsBar').style.background = carbOver ? 'var(--danger)' : 'var(--accent2)';
+  document.getElementById('carbsGoalText').textContent = `${Math.round(carb)}g / ${gcarb}g`;
+  document.getElementById('carbsGoalText').style.color = carbOver ? 'var(--danger)' : 'var(--muted)';
+
+  // Fat bar + goal text
+  const fatOver = fat > gfat;
+  document.getElementById('fatTotal').textContent = Math.round(fat)+'g';
+  document.getElementById('fatBar').style.width = Math.min(fat/gfat*100,100)+'%';
+  document.getElementById('fatBar').style.background = fatOver ? 'var(--danger)' : 'var(--danger)';
+  document.getElementById('fatGoalText').textContent = `${Math.round(fat)}g / ${gfat}g`;
+  document.getElementById('fatGoalText').style.color = fatOver ? 'var(--danger)' : 'var(--muted)';
+
   const isToday = currentKey() === todayKey();
   document.getElementById('dateSwitcherLabel').textContent = isToday ? '今天' :
     (currentDate.getMonth()+1)+'/'+currentDate.getDate();
@@ -792,30 +911,59 @@ function renderFoodList(entries) {
     </div>`;
     return;
   }
-  list.innerHTML = entries.map((e,i) => {
+
+  list.innerHTML = '';
+  entries.forEach((entry, i) => {
     let iconHtml;
-    if (e.photo) {
-      iconHtml = `<img src="${e.photo}" style="width:40px;height:40px;border-radius:10px;object-fit:cover" alt=""/>`;
+    if (entry.photo) {
+      iconHtml = `<img src="${entry.photo}" style="width:40px;height:40px;border-radius:10px;object-fit:cover" alt=""/>`;
     } else {
       iconHtml = SVG_UTENSILS;
     }
-    return `<div class="food-card mb-2" style="animation-delay:${i*0.05}s">
+
+    const hasDetail = entry.detail && entry.detail.length > 2;
+    const detailBadge = hasDetail ? `<span style="font-size:0.65rem;color:var(--accent);background:rgba(72,202,228,0.1);border-radius:4px;padding:2px 6px;margin-left:4px;">展開</span>` : '';
+
+    const card = document.createElement('div');
+    card.className = 'food-card mb-2';
+    card.style.animationDelay = `${i*0.05}s`;
+    card.innerHTML = `
       <div class="food-icon" style="background:var(--surface2)">${iconHtml}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:0.88rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.name}</div>
+        <div style="font-size:0.88rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${entry.name}${detailBadge}</div>
         <div style="font-size:0.72rem;color:var(--muted);margin-top:2px">
-          <span style="color:var(--accent3)">${e.protein||0}g蛋白</span> ·
-          <span style="color:var(--accent2)">${e.carbs||0}g碳水</span> ·
-          <span style="color:var(--danger)">${e.fat||0}g脂肪</span>
+          <span style="color:var(--accent3)">${entry.protein||0}g蛋白</span> ·
+          <span style="color:var(--accent2)">${entry.carbs||0}g碳水</span> ·
+          <span style="color:var(--danger)">${entry.fat||0}g脂肪</span>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <span class="calories-badge">${e.calories} kcal</span>
-        ${e.price ? `<span style="font-size:0.72rem;color:var(--muted)" class="mono">NT$${e.price}</span>` : ''}
+        <span class="calories-badge">${entry.calories} kcal</span>
+        ${entry.price ? `<span style="font-size:0.72rem;color:var(--muted)" class="mono">NT$${entry.price}</span>` : ''}
       </div>
-      <button class="delete-btn" onclick="deleteEntry('${e.id}')">×</button>
-    </div>`;
-  }).join('');
+    `;
+
+    // Feature 2: Long-press to delete
+    let lpTimer = null;
+    card.addEventListener('pointerdown', () => {
+      lpTimer = setTimeout(() => {
+        card.classList.add('pressing');
+        if (navigator.vibrate) navigator.vibrate(50);
+        showDeleteConfirm(entry.id, entry.name);
+      }, 600);
+    });
+    card.addEventListener('pointerup', () => { clearTimeout(lpTimer); setTimeout(() => card.classList.remove('pressing'), 200); });
+    card.addEventListener('pointerleave', () => { clearTimeout(lpTimer); card.classList.remove('pressing'); });
+
+    list.appendChild(card);
+  });
+}
+
+// ─── Feature 2: Delete confirm ───────────────
+function showDeleteConfirm(id, name) {
+  document.getElementById('deleteConfirmName').textContent = name;
+  document.getElementById('deleteConfirmBtn').onclick = () => { deleteEntry(id); closeModal('deleteConfirmModal'); };
+  openModal('deleteConfirmModal');
 }
 
 function updateAnalysis() {
@@ -975,6 +1123,7 @@ function addFoodEntry() {
     fat:      parseFloat(document.getElementById('inputFat').value)||0,
     price:    parseFloat(document.getElementById('inputPrice').value)||0,
     photo:    currentEntryPhoto || '',
+    detail:   '',
   };
   allData.push(entry);
   saveData();
@@ -986,26 +1135,174 @@ function addFoodEntry() {
   buildNutrientChart();
 }
 
-function pushEntryToSheet(entry) {
+// ─── Feature 1: Meal Cart ────────────────────
+function addToMeal() {
+  const name = document.getElementById('inputName').value.trim();
+  const cal = parseFloat(document.getElementById('inputCalories').value) || 0;
+  const protein = parseFloat(document.getElementById('inputProtein').value) || 0;
+  const carbs = parseFloat(document.getElementById('inputCarbs').value) || 0;
+  const fat = parseFloat(document.getElementById('inputFat').value) || 0;
+  const price = parseFloat(document.getElementById('inputPrice').value) || 0;
+  const emoji = '🍽️';
+  if (!name) { showToast('請輸入食物名稱', 'error'); return; }
+  currentMeal.push({ name, cal, protein, carbs, fat, price, emoji });
+  updateMealBar();
+  closeModal('addModal');
+  showToast(`${emoji} ${name} 已加入餐點`, 'success');
+}
+
+function updateMealBar() {
+  const bar = document.getElementById('mealBar');
+  if (currentMeal.length === 0) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  const totalCal = currentMeal.reduce((s,i) => s + i.cal, 0);
+  document.getElementById('mealBarCount').textContent = `${currentMeal.length} 項食物`;
+  document.getElementById('mealBarCals').textContent = `${Math.round(totalCal)} kcal`;
+}
+
+function openMealList() {
+  const container = document.getElementById('mealListItems');
+  if (!currentMeal.length) {
+    container.innerHTML = `<div style="text-align:center;color:var(--muted);padding:20px;font-size:0.85rem;">餐點為空</div>`;
+  } else {
+    container.innerHTML = currentMeal.map((item, idx) => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+        <span style="font-size:1.2rem">${item.emoji}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.88rem;font-weight:500">${item.name}</div>
+          <div style="font-size:0.72rem;color:var(--muted);">${Math.round(item.cal)} kcal · ${item.protein}g蛋白 · ${item.carbs}g碳水 · ${item.fat}g脂肪</div>
+        </div>
+        <button onclick="removeMealItem(${idx})" style="background:rgba(239,71,111,0.12);color:var(--danger);border:none;border-radius:8px;width:28px;height:28px;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">×</button>
+      </div>
+    `).join('');
+  }
+  openModal('mealListModal');
+}
+
+function removeMealItem(idx) {
+  currentMeal.splice(idx, 1);
+  updateMealBar();
+  openMealList(); // re-render
+}
+
+function clearMeal() {
+  currentMeal = [];
+  updateMealBar();
+  closeModal('mealListModal');
+}
+
+function commitMeal() {
+  if (!currentMeal.length) { showToast('餐點為空', 'error'); return; }
+  const totalCal     = currentMeal.reduce((s,i) => s + i.cal, 0);
+  const totalProtein = currentMeal.reduce((s,i) => s + i.protein, 0);
+  const totalCarbs   = currentMeal.reduce((s,i) => s + i.carbs, 0);
+  const totalFat     = currentMeal.reduce((s,i) => s + i.fat, 0);
+  const totalPrice   = currentMeal.reduce((s,i) => s + i.price, 0);
+  const mealName = currentMeal.length === 1
+    ? currentMeal[0].name
+    : `${currentMeal[0].name} 等${currentMeal.length}項`;
+
+  const entry = {
+    id:       Date.now().toString(),
+    date:     currentKey(),
+    name:     mealName,
+    emoji:    '🛒',
+    calories: Math.round(totalCal * 10) / 10,
+    protein:  Math.round(totalProtein * 10) / 10,
+    carbs:    Math.round(totalCarbs * 10) / 10,
+    fat:      Math.round(totalFat * 10) / 10,
+    price:    Math.round(totalPrice * 10) / 10,
+    photo:    '',
+    detail:   JSON.stringify(currentMeal),
+  };
+
+  allData.push(entry);
+  saveData();
+  pushEntryToSheet(entry);
+  currentMeal = [];
+  updateMealBar();
+  closeModal('mealListModal');
+  updateAll();
+  buildWeekChart();
+  buildNutrientChart();
+  showToast(`餐點已記錄：${mealName}`, 'success');
+}
+
+// ─── Feature 4: Sheet Sync (revamped) ────────
+async function syncFromSheet(silent = false) {
+  const url = localStorage.getItem('sheetApiUrl');
+  if (!url) {
+    if (!silent) switchTab('settings', document.getElementById('tab-settings'));
+    return;
+  }
+  showLoading(true);
+  try {
+    const res = await fetch(`${url}?action=getAll`, { signal: AbortSignal.timeout(15000) });
+    const data = await res.json();
+    if (data.status !== 'ok') throw new Error(data.message || 'error');
+    const presets = allData.filter(e => e.id && e.id.startsWith('preset_'));
+    const sheetEntries = (data.rows || []).map(r => ({
+      id:      r.id,
+      date:    r.date,
+      name:    r.name,
+      emoji:   r.emoji || '🍽️',
+      calories: parseFloat(r.calories) || 0,
+      protein:  parseFloat(r.protein)  || 0,
+      carbs:    parseFloat(r.carbs)    || 0,
+      fat:      parseFloat(r.fat)      || 0,
+      price:    parseFloat(r.price)    || 0,
+      detail:   r.detail || '',
+      photo:    '',
+    }));
+    allData = [...presets, ...sheetEntries];
+    saveData();
+    updateAll();
+    buildWeekChart();
+    buildNutrientChart();
+    updateConnectionStatus();
+    if (!silent) showToast(`同步完成，共 ${sheetEntries.length} 筆記錄`, 'success');
+  } catch(e) {
+    if (!silent) showToast('同步失敗：' + e.message, 'error');
+    updateAll();
+    buildWeekChart();
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function pushEntryToSheet(entry) {
   const url = localStorage.getItem('sheetApiUrl');
   if (!url) return;
-  const data = encodeURIComponent(JSON.stringify({
-    '日期': entry.date, '食物名稱': entry.name,
-    '熱量': entry.calories, '蛋白質': entry.protein,
-    '碳水': entry.carbs, '油脂': entry.fat,
-    '價錢': entry.price, 'emoji': entry.emoji, 'id': entry.id,
-  }));
-  fetch(`${url}?action=add&data=${data}`)
-    .then(r => r.json())
-    .then(res => {
-      if (res.status === 'ok') showToast('[成功] 已同步到試算表', 'success');
-    })
-    .catch(() => showToast('[錯誤] 試算表同步失敗，資料已存本機', 'error'));
+  const params = new URLSearchParams({
+    action:   'add',
+    id:       entry.id,
+    date:     entry.date,
+    name:     entry.name,
+    calories: entry.calories,
+    protein:  entry.protein  || 0,
+    carbs:    entry.carbs    || 0,
+    fat:      entry.fat      || 0,
+    price:    entry.price    || 0,
+    detail:   entry.detail   || '',
+    emoji:    entry.emoji    || '🍽️',
+  });
+  try {
+    await fetch(`${url}?${params}`, { signal: AbortSignal.timeout(10000) });
+  } catch(e) { console.warn('push failed', e); }
+}
+
+async function deleteEntryFromSheet(id) {
+  const url = localStorage.getItem('sheetApiUrl');
+  if (!url) return;
+  try {
+    await fetch(`${url}?action=delete&id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(10000) });
+  } catch(e) { console.warn('delete sync failed', e); }
 }
 
 function deleteEntry(id) {
   allData = allData.filter(e => e.id !== id);
   saveData();
+  deleteEntryFromSheet(id);
   updateAll();
   buildWeekChart();
   buildNutrientChart();
@@ -1066,64 +1363,13 @@ function onTemplatePhotoSelected(input) {
   });
 }
 
-// ─── Sheet Sync ──────────────────────────────
-function syncFromSheet(silent = false) {
-  const url = localStorage.getItem('sheetApiUrl');
-  if (!url) { switchTab('settings', document.getElementById('tab-settings')); return; }
-  const overlay = document.getElementById('loadingOverlay');
-  overlay.classList.add('show');
-  fetch(url + '?action=get')
-    .then(r => r.json())
-    .then(rows => {
-      overlay.classList.remove('show');
-      importSheetData(rows, silent);
-    })
-    .catch(() => {
-      overlay.classList.remove('show');
-      showToast('[錯誤] 同步失敗，請檢查設定', 'error');
-      updateAll();
-      buildWeekChart();
-    });
-}
-
-function importSheetData(rows, silent = false) {
-  const newData = [];
-  rows.forEach(row => {
-    const dateRaw = row['日期'] || row['date'] || '';
-    const d = new Date(dateRaw);
-    if (isNaN(d.getTime())) return;
-    const key = dateKey(d);
-    newData.push({
-      id:       row['id'] || (key + '_' + (row['食物名稱']||'').replace(/\s/g,'') + '_' + Math.random().toString(36).slice(2,5)),
-      date:     key,
-      name:     row['食物名稱'] || row['name'] || '',
-      emoji:    '',
-      calories: parseFloat(row['熱量']||row['calories'])||0,
-      protein:  parseFloat(row['蛋白質']||row['protein'])||0,
-      carbs:    parseFloat(row['碳水']||row['carbs'])||0,
-      fat:      parseFloat(row['油脂']||row['fat'])||0,
-      price:    parseFloat(row['價錢']||row['price'])||0,
-      photo:    '',
-    });
-  });
-  allData = newData;
-  saveData();
-  updateAll();
-  buildWeekChart();
-  buildNutrientChart();
-  if (!silent) showToast('[成功] 同步完成，共 ' + newData.length + ' 筆', 'success');
-}
-
 // ─── Modal ───────────────────────────────────
-function openAddModal() { document.getElementById('addModal').classList.add('open'); }
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function openAddModal() { openModal('addModal'); }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
-  if (id === 'addModal') {
-    clearEntryModal();
-  }
-  if (id === 'addTemplateModal') {
-    clearTemplateModal();
-  }
+  if (id === 'addModal') clearEntryModal();
+  if (id === 'addTemplateModal') clearTemplateModal();
 }
 function closeModalOnBg(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
 
@@ -1139,6 +1385,8 @@ function switchTab(name, btn) {
   if (name === 'settings') {
     document.getElementById('goalCalories').value = goals.calories || '';
     document.getElementById('goalProtein').value  = goals.protein  || '';
+    document.getElementById('goalCarbs').value    = goals.carbs    || '';
+    document.getElementById('goalFat').value      = goals.fat      || '';
     document.getElementById('goalBudget').value   = goals.budget   || '';
     document.getElementById('apiUrlInput').value  = localStorage.getItem('sheetApiUrl') || '';
   }
@@ -1149,6 +1397,8 @@ function saveGoals() {
   goals = {
     calories: parseFloat(document.getElementById('goalCalories').value)||2000,
     protein:  parseFloat(document.getElementById('goalProtein').value)||150,
+    carbs:    parseFloat(document.getElementById('goalCarbs').value)||250,
+    fat:      parseFloat(document.getElementById('goalFat').value)||65,
     budget:   parseFloat(document.getElementById('goalBudget').value)||300,
   };
   localStorage.setItem('dietGoals', JSON.stringify(goals));
@@ -1163,13 +1413,14 @@ function saveApiUrl() {
   const result = document.getElementById('apiTestResult');
   result.textContent = '連線測試中...';
   result.style.color = 'var(--muted)';
-  fetch(url + '?action=get')
+  fetch(url + '?action=getAll')
     .then(r => r.json())
     .then(data => {
-      result.textContent = '連線成功，取得 ' + data.length + ' 筆資料';
+      const count = (data.rows || []).length;
+      result.textContent = `連線成功，取得 ${count} 筆資料`;
       result.style.color = 'var(--accent)';
       updateConnectionStatus();
-      importSheetData(data, true);
+      syncFromSheet(true);
     })
     .catch(() => {
       result.textContent = '連線失敗，請確認 Apps Script 已部署且允許匿名存取';
@@ -1185,17 +1436,85 @@ function exportData() {
   a.click();
 }
 
-function clearAllData() {
-  if (!confirm('確定要清除所有本地資料？此操作不可復原。')) return;
-  allData = [];
-  saveData();
-  updateAll();
+// ─── Feature 3: Clear Confirm ────────────────
+function showClearConfirm(desc, action) {
+  document.getElementById('clearConfirmDesc').textContent = desc;
+  document.getElementById('clearConfirmInput').value = '';
+  document.getElementById('clearConfirmBtn').disabled = true;
+  document.getElementById('clearConfirmBtn').style.opacity = '0.4';
+  pendingClearAction = action;
+  openModal('clearConfirmModal');
+}
+
+function checkClearConfirm() {
+  const ok = document.getElementById('clearConfirmInput').value === '確認清除';
+  document.getElementById('clearConfirmBtn').disabled = !ok;
+  document.getElementById('clearConfirmBtn').style.opacity = ok ? '1' : '0.4';
+}
+
+function executeClearAction() {
+  if (pendingClearAction) pendingClearAction();
+  closeModal('clearConfirmModal');
+}
+
+// ─── Feature 5: Food Library Sync ────────────
+async function syncTemplatesFromSheet() {
+  const url = localStorage.getItem('sheetApiUrl');
+  if (!url) { showToast('請先設定試算表網址', 'error'); return; }
+  try {
+    const res = await fetch(`${url}?action=getAllTemplates`, { signal: AbortSignal.timeout(10000) });
+    const data = await res.json();
+    if (data.status !== 'ok') return;
+    const presets = foodTemplates.filter(t => t.id && t.id.startsWith('preset_'));
+    const sheetTemplates = (data.rows || []).map(r => ({
+      id:       r.id,
+      name:     r.name,
+      emoji:    r.emoji || '🍽️',
+      calories: parseFloat(r.calories) || 0,
+      protein:  parseFloat(r.protein)  || 0,
+      carbs:    parseFloat(r.carbs)    || 0,
+      fat:      parseFloat(r.fat)      || 0,
+      price:    parseFloat(r.price)    || 0,
+      photo:    '',
+    }));
+    foodTemplates = [...presets, ...sheetTemplates];
+    saveTemplates();
+    renderTemplates();
+    showToast(`食物庫同步完成，${sheetTemplates.length} 個自訂食物`, 'success');
+  } catch(e) { console.warn('template sync failed', e); showToast('食物庫同步失敗', 'error'); }
+}
+
+async function pushTemplateToSheet(template) {
+  const url = localStorage.getItem('sheetApiUrl');
+  if (!url) return;
+  const params = new URLSearchParams({
+    action:   'addTemplate',
+    id:       template.id,
+    name:     template.name,
+    calories: template.calories,
+    protein:  template.protein  || 0,
+    carbs:    template.carbs    || 0,
+    fat:      template.fat      || 0,
+    price:    template.price    || 0,
+    emoji:    template.emoji    || '🍽️',
+  });
+  try {
+    await fetch(`${url}?${params}`, { signal: AbortSignal.timeout(10000) });
+  } catch(e) { console.warn('push template failed', e); }
+}
+
+async function deleteTemplateFromSheet(id) {
+  const url = localStorage.getItem('sheetApiUrl');
+  if (!url) return;
+  try {
+    await fetch(`${url}?action=deleteTemplate&id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(10000) });
+  } catch(e) { console.warn('delete template sync failed', e); }
 }
 
 // ─── Food Templates ──────────────────────────
 function saveTemplates() { localStorage.setItem('foodTemplates', JSON.stringify(foodTemplates)); }
 
-function openAddTemplateModal() { document.getElementById('addTemplateModal').classList.add('open'); }
+function openAddTemplateModal() { openModal('addTemplateModal'); }
 
 function clearTemplateModal() {
   ['tplName','tplCalories','tplProtein','tplCarbs','tplFat','tplPrice']
@@ -1210,18 +1529,20 @@ function saveTemplate() {
   const name = document.getElementById('tplName').value.trim();
   const cal  = parseFloat(document.getElementById('tplCalories').value);
   if (!name || !cal) { showToast('[錯誤] 請填入名稱與熱量', 'error'); return; }
-  foodTemplates.push({
+  const template = {
     id:       Date.now().toString(),
     name,
-    emoji:    '',
+    emoji:    '🍽️',
     calories: cal,
     protein:  parseFloat(document.getElementById('tplProtein').value)||0,
     carbs:    parseFloat(document.getElementById('tplCarbs').value)||0,
     fat:      parseFloat(document.getElementById('tplFat').value)||0,
     price:    parseFloat(document.getElementById('tplPrice').value)||0,
     photo:    currentTemplatePhoto || '',
-  });
+  };
+  foodTemplates.push(template);
   saveTemplates();
+  pushTemplateToSheet(template);
   closeModal('addTemplateModal');
   renderTemplates();
   showToast('[成功] 模板已儲存', 'success');
@@ -1230,6 +1551,7 @@ function saveTemplate() {
 function deleteTemplate(id) {
   foodTemplates = foodTemplates.filter(t => t.id !== id);
   saveTemplates();
+  deleteTemplateFromSheet(id);
   renderTemplates();
 }
 
@@ -1274,7 +1596,7 @@ function openServingModal(templateId) {
     <span style="color:var(--danger)">${activeTemplate.fat}g脂肪</span>
     ${activeTemplate.price ? ` · NT$${activeTemplate.price}` : ''}`;
   document.getElementById('servingInput').value = '1';
-  document.getElementById('servingModal').classList.add('open');
+  openModal('servingModal');
 }
 
 function confirmServing() {
@@ -1287,14 +1609,13 @@ function confirmServing() {
   document.getElementById('inputCarbs').value    = r(activeTemplate.carbs);
   document.getElementById('inputFat').value      = r(activeTemplate.fat);
   document.getElementById('inputPrice').value    = r(activeTemplate.price);
-  // Copy template photo if present
   if (activeTemplate.photo) {
     currentEntryPhoto = activeTemplate.photo;
     document.getElementById('entryPhotoImg').src = activeTemplate.photo;
     document.getElementById('entryPhotoPreview').style.display = 'block';
   }
   closeModal('servingModal');
-  document.getElementById('addModal').classList.add('open');
+  openModal('addModal');
 }
 
 // ─── Autocomplete ────────────────────────────
@@ -1372,50 +1693,106 @@ function closeAutocomplete() {
 init();
 </script>
 
-<!--
-═══════════════════════════════════════════════════════
-  APPS SCRIPT CODE — 請複製以下內容貼到 Google Apps Script
-  試算表欄位順序: 日期 | 食物名稱 | 熱量 | 蛋白質 | 碳水 | 油脂 | 價錢 | emoji | id
-═══════════════════════════════════════════════════════
+<!-- ══════════════════════════════════════════
+NEW APPS SCRIPT v3 — paste in Google Apps Script editor
 
 function doGet(e) {
-  const action = (e && e.parameter && e.parameter.action) || 'get';
-  const sheet  = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const p = e.parameter;
+  const action = p.action;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  if (action === 'add') {
-    const data = JSON.parse(decodeURIComponent(e.parameter.data || '{}'));
-    sheet.appendRow([
-      data['日期']   || '',
-      data['食物名稱'] || '',
-      data['熱量']   || 0,
-      data['蛋白質'] || 0,
-      data['碳水']   || 0,
-      data['油脂']   || 0,
-      data['價錢']   || 0,
-      data['emoji']  || '🍽',
-      data['id']     || '',
-    ]);
-    return ContentService
-      .createTextOutput(JSON.stringify({ status: 'ok' }))
-      .setMimeType(ContentService.MimeType.JSON);
+  // Main data sheet
+  const sheet = ss.getSheetByName('飲食記錄') || ss.getSheets()[0];
+  // Food library sheet
+  let tSheet = ss.getSheetByName('食物庫');
+  if (!tSheet) {
+    tSheet = ss.insertSheet('食物庫');
+    tSheet.appendRow(['id','name','calories','protein','carbs','fat','price','emoji']);
   }
 
-  // Default: return all rows as JSON
-  const rows    = sheet.getDataRange().getValues();
-  const headers = rows[0];
-  const result  = rows.slice(1)
-    .filter(row => row[0])
-    .map(row => {
+  if (action === 'getAll') {
+    const rows = sheet.getDataRange().getValues();
+    if (rows.length <= 1) return jsonResponse({ status:'ok', rows:[] });
+    const headers = rows[0];
+    const data = rows.slice(1).map(r => {
       const obj = {};
-      headers.forEach((h, i) => { obj[String(h)] = row[i]; });
+      headers.forEach((h,i) => obj[h] = r[i] !== undefined ? String(r[i]) : '');
       return obj;
     });
-  return ContentService
-    .createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
+    return jsonResponse({ status:'ok', rows: data });
+  }
+
+  if (action === 'add') {
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['id','date','name','calories','protein','carbs','fat','price','detail','emoji']);
+    }
+    sheet.appendRow([
+      p.id || '', p.date || '', p.name || '',
+      parseFloat(p.calories)||0, parseFloat(p.protein)||0,
+      parseFloat(p.carbs)||0, parseFloat(p.fat)||0,
+      parseFloat(p.price)||0, p.detail||'', p.emoji||'🍽️'
+    ]);
+    return jsonResponse({ status:'ok' });
+  }
+
+  if (action === 'delete') {
+    const id = p.id;
+    const rows = sheet.getDataRange().getValues();
+    const headers = rows[0];
+    const idCol = headers.indexOf('id');
+    for (let i = rows.length-1; i >= 1; i--) {
+      if (String(rows[i][idCol]) === String(id)) {
+        sheet.deleteRow(i+1);
+        break;
+      }
+    }
+    return jsonResponse({ status:'ok' });
+  }
+
+  if (action === 'getAllTemplates') {
+    const rows = tSheet.getDataRange().getValues();
+    if (rows.length <= 1) return jsonResponse({ status:'ok', rows:[] });
+    const headers = rows[0];
+    const data = rows.slice(1).map(r => {
+      const obj = {};
+      headers.forEach((h,i) => obj[h] = r[i] !== undefined ? String(r[i]) : '');
+      return obj;
+    });
+    return jsonResponse({ status:'ok', rows: data });
+  }
+
+  if (action === 'addTemplate') {
+    tSheet.appendRow([
+      p.id||'', p.name||'',
+      parseFloat(p.calories)||0, parseFloat(p.protein)||0,
+      parseFloat(p.carbs)||0, parseFloat(p.fat)||0,
+      parseFloat(p.price)||0, p.emoji||'🍽️'
+    ]);
+    return jsonResponse({ status:'ok' });
+  }
+
+  if (action === 'deleteTemplate') {
+    const id = p.id;
+    const rows = tSheet.getDataRange().getValues();
+    const headers = rows[0];
+    const idCol = headers.indexOf('id');
+    for (let i = rows.length-1; i >= 1; i--) {
+      if (String(rows[i][idCol]) === String(id)) {
+        tSheet.deleteRow(i+1);
+        break;
+      }
+    }
+    return jsonResponse({ status:'ok' });
+  }
+
+  return jsonResponse({ status:'error', message:'unknown action' });
 }
 
-═══════════════════════════════════════════════════════
--->
+function jsonResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+══════════════════════════════════ -->
 </body>
 </html>
