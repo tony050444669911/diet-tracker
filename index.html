@@ -657,9 +657,15 @@ body {
         <img id="add-photo-img" style="width:80px;height:80px;object-fit:cover;border-radius:10px;border:1px solid var(--border);" alt="preview">
       </div>
     </div>
-    <div style="margin-bottom:12px;">
-      <label class="form-label">食物圖示 (emoji, 選填)</label>
-      <input type="text" id="emojiPicker" class="form-input" placeholder="" maxlength="2" style="width:80px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div>
+        <label class="form-label">日期</label>
+        <input type="date" id="add-date" class="form-input" style="color-scheme:dark;">
+      </div>
+      <div>
+        <label class="form-label">食物圖示 (emoji)</label>
+        <input type="text" id="emojiPicker" class="form-input" placeholder="" maxlength="2">
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
       <div><label class="form-label">熱量 (kcal) *</label><input type="number" id="add-cal" class="form-input" placeholder="0"></div>
@@ -682,6 +688,18 @@ body {
     <div style="display:flex;gap:10px;">
       <button onclick="closeModal('delete-confirm-modal')" class="btn btn-surface" style="flex:1;">取消</button>
       <button onclick="confirmDelete()" class="btn btn-danger" style="flex:1;">確認刪除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Entry Modal -->
+<div id="rename-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('rename-modal')">
+  <div class="modal-box">
+    <div style="font-weight:700;font-size:16px;margin-bottom:16px;">重新命名</div>
+    <input type="text" id="rename-input" class="form-input" placeholder="輸入新名稱..." style="margin-bottom:16px;">
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeModal('rename-modal')" class="btn btn-surface" style="flex:1;">取消</button>
+      <button onclick="confirmRename()" class="btn btn-accent" style="flex:1;">儲存</button>
     </div>
   </div>
 </div>
@@ -828,6 +846,7 @@ let goals = { calories:2000, protein:150, carbs:200, fat:60, budget:300 };
 let currentMeal = [];
 let servingTarget = null;
 let deleteTarget = { type:null, id:null, name:null };
+let renameTarget = null;
 let activeTab = 'daily';
 let charts = {};
 let trendActiveMetrics = new Set(['cal']);
@@ -863,6 +882,7 @@ const DEFAULT_FOOD_TEMPLATES = [
 function todayStr() {
   return new Date().toISOString().slice(0,10);
 }
+function localDateStr(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
 function genId() {
   return Date.now() + Math.random().toString(36).slice(2);
 }
@@ -974,17 +994,33 @@ async function syncFoodLibrary() {
       const presetIds = new Set(DEFAULT_FOOD_TEMPLATES.map(t=>t.id));
       const remoteById = {};
       res.rows.forEach(r=>{
-        if(!presetIds.has(r.id)){
-          remoteById[r.id]={
-            id:r.id,name:r.name,calories:num(r.calories),
-            protein:num(r.protein),carbs:num(r.carbs),fat:num(r.fat),
-            price:num(r.price),emoji:r.emoji||'',photo:''
+        const rid = r.id || r['Column 11'] || r['欄 11'] || '';
+        if (!rid || rid.startsWith('config_')) return;
+        if(!presetIds.has(rid)){
+          remoteById[rid]={
+            id:rid,
+            name: r.name || r['食物名稱'] || r['名稱'] || '',
+            calories:num(r.calories || r['熱量'] || r['calories']),
+            protein:num(r.protein || r['蛋白質']),
+            carbs:num(r.carbs || r['碳水']),
+            fat:num(r.fat || r['油脂']),
+            price:num(r.price || r['價錢']),
+            emoji: r.emoji || r['圖示'] || '',
+            photo:''
           };
         }
       });
       const presets = foodTemplates.filter(t=>presetIds.has(t.id));
       foodTemplates.filter(t=>!presetIds.has(t.id)).forEach(t=>{ remoteById[t.id]={...t,...remoteById[t.id]}; });
-      foodTemplates = [...presets,...Object.values(remoteById)];
+      const goalsRows2 = res.rows.filter(r => (r.id || r['Column 11'] || '') === 'config_goals');
+      if (goalsRows2.length > 0) {
+        try {
+          const gName2 = goalsRows2[goalsRows2.length-1].name || goalsRows2[goalsRows2.length-1]['食物名稱'] || '';
+          const g2 = JSON.parse(gName2);
+          if (g2 && g2.calories) { goals = {...goals,...g2}; saveGoalsLS(); loadSettingsForm(); }
+        } catch(e) {}
+      }
+      foodTemplates = [...presets,...Object.values(remoteById).filter(t=>!t.id.startsWith('config_'))];
       saveTemplates();
       renderLibraryTab();
       showToast('食物庫已同步','success');
@@ -1058,11 +1094,11 @@ function updateDateDisplay(){
 
 document.getElementById('prev-day').addEventListener('click',()=>{
   const d = new Date(currentDate+'T00:00:00'); d.setDate(d.getDate()-1);
-  setDate(d.toISOString().slice(0,10));
+  setDate(localDateStr(d));
 });
 document.getElementById('next-day').addEventListener('click',()=>{
   const d = new Date(currentDate+'T00:00:00'); d.setDate(d.getDate()+1);
-  setDate(d.toISOString().slice(0,10));
+  setDate(localDateStr(d));
 });
 document.getElementById('date-center-btn').addEventListener('click',()=>{
   const inp = document.getElementById('hidden-date-input');
@@ -1145,9 +1181,14 @@ function buildEntryCard(entry){
       <div style="flex:1;min-width:0;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px;">
           <div style="font-weight:600;font-size:14px;word-break:break-all;">${safeName}${isComposite?` <span style="font-size:11px;color:var(--muted);">(${subItems.length}種)</span>`:''}</div>
-          <button class="del-entry-btn" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;flex-shrink:0;" title="長按刪除">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="5 7 15 7"/><line x1="8" y1="7" x2="8" y2="15"/><line x1="12" y1="7" x2="12" y2="15"/><path d="M7 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><rect x="4" y="7" width="12" height="9" rx="2"/></svg>
-          </button>
+          <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button class="rename-entry-btn" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;" title="重新命名">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="del-entry-btn" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;" title="長按刪除">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="5 7 15 7"/><line x1="8" y1="7" x2="8" y2="15"/><line x1="12" y1="7" x2="12" y2="15"/><path d="M7 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><rect x="4" y="7" width="12" height="9" rx="2"/></svg>
+            </button>
+          </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
           <span class="mono" style="font-size:13px;color:var(--accent);font-weight:600;">${Math.round(entry.cal)} kcal</span>
@@ -1173,6 +1214,7 @@ function buildEntryCard(entry){
     document.getElementById('delete-confirm-text').textContent=`確定要刪除「${entry.food}」嗎？`;
     openModal('delete-confirm-modal');
   });
+  card.querySelector('.rename-entry-btn').addEventListener('click', ()=>openRename(entry));
 
   if(isComposite){
     card.querySelector('.expand-sub-btn').addEventListener('click',()=>{
@@ -1213,6 +1255,27 @@ function confirmDelete(){
   deleteTarget={type:null,id:null,name:null};
 }
 
+function openRename(entry) {
+  renameTarget = entry.id;
+  document.getElementById('rename-input').value = entry.food;
+  openModal('rename-modal');
+}
+function confirmRename() {
+  const newName = document.getElementById('rename-input').value.trim();
+  if (!newName) { showToast('請輸入名稱', 'error'); return; }
+  const entry = allData.find(e => e.id === renameTarget);
+  if (!entry) return;
+  const oldId = entry.id;
+  entry.food = newName;
+  saveEntries();
+  renderDailyTab();
+  // Sync: delete old + re-add with new name
+  deleteEntryFromSheet(oldId);
+  setTimeout(() => pushEntryToSheet(entry), 400);
+  closeModal('rename-modal');
+  showToast('已重新命名', 'success');
+}
+
 // ============================================================
 // ADD FOOD
 // ============================================================
@@ -1223,6 +1286,7 @@ document.getElementById('open-add-food').addEventListener('click',()=>{
 
 function clearAddForm(){
   ['add-name','emojiPicker','add-cal','add-price','add-protein','add-carbs','add-fat'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('add-date').value = currentDate;
   document.getElementById('add-photo-preview').style.display='none';
   photoBase64.add='';
   document.getElementById('autocomplete-list').classList.remove('open');
@@ -1233,8 +1297,9 @@ function submitAddFood(){
   const cal = num(document.getElementById('add-cal').value);
   if(!name){ showToast('請輸入食物名稱','error'); return; }
   if(!cal){ showToast('請輸入熱量','error'); return; }
+  const entryDate = document.getElementById('add-date').value || currentDate;
   const entry = {
-    id:genId(), date:currentDate, food:name, cal,
+    id:genId(), date:entryDate, food:name, cal,
     protein:num(document.getElementById('add-protein').value),
     carbs:num(document.getElementById('add-carbs').value),
     fat:num(document.getElementById('add-fat').value),
@@ -1655,6 +1720,17 @@ async function saveAndTestSheet(){
   }catch(e){ res.textContent='連接失敗：'+e.message; res.style.color='var(--danger)'; }
 }
 
+async function pushGoalsToSheet() {
+  if (!getSheetUrl()) return;
+  try {
+    await apiCall({
+      action: 'addTemplate', id: 'config_goals',
+      name: JSON.stringify(goals),
+      calories: 0, protein: 0, carbs: 0, fat: 0, price: 0, emoji: 'cfg'
+    });
+  } catch(e) {}
+}
+
 function saveGoals(){
   goals={
     calories:num(document.getElementById('goal-cal').value)||2000,
@@ -1663,7 +1739,7 @@ function saveGoals(){
     fat:num(document.getElementById('goal-fat').value)||60,
     budget:num(document.getElementById('goal-budget').value)||300
   };
-  saveGoalsLS(); renderDailyTab(); showToast('目標已儲存','success');
+  saveGoalsLS(); renderDailyTab(); pushGoalsToSheet(); showToast('目標已儲存','success');
 }
 
 function toggleDataManage(){
@@ -1737,9 +1813,20 @@ async function init(){
               price:num(r.price),emoji:r.emoji||'',photo:''};
           }
         });
+        // Extract goals from special config row
+        const goalsRows = res2.rows.filter(r => (r.id || r['Column 11'] || '') === 'config_goals');
+        if (goalsRows.length > 0) {
+          try {
+            const gName = goalsRows[goalsRows.length-1].name || goalsRows[goalsRows.length-1]['食物名稱'] || '';
+            const g = JSON.parse(gName);
+            if (g && g.calories) { goals = {...goals, ...g}; saveGoalsLS(); }
+          } catch(e) {}
+        }
+        // Filter out config rows from templates
+        res2.rows.filter(r => (r.id || r['Column 11'] || '').startsWith('config_')).forEach(r => { delete remoteById[r.id]; });
         const presets=foodTemplates.filter(t=>presetIds.has(t.id));
-        foodTemplates.filter(t=>!presetIds.has(t.id)).forEach(t=>{ remoteById[t.id]={...t,...remoteById[t.id]}; });
-        foodTemplates=[...presets,...Object.values(remoteById)];
+        foodTemplates.filter(t=>!presetIds.has(t.id)&&!t.id.startsWith('config_')).forEach(t=>{ remoteById[t.id]={...t,...remoteById[t.id]}; });
+        foodTemplates=[...presets,...Object.values(remoteById).filter(t=>!t.id.startsWith('config_'))];
         saveTemplates();
       }
     }catch(e){}
