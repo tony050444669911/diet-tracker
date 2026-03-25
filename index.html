@@ -92,12 +92,37 @@ body {
   border-radius: 99px;
   transition: width 0.4s ease;
 }
+.swipe-wrap {
+  position: relative;
+  overflow: hidden;
+  margin: 8px 16px;
+  border-radius: 12px;
+}
+.swipe-del-btn {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 80px;
+  background: var(--danger);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Noto Sans TC', sans-serif;
+  border-radius: 0 12px 12px 0;
+  flex-shrink: 0;
+}
 .food-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  margin: 8px 16px;
+  margin: 0;
+  transition: transform 0.2s ease;
+  position: relative;
+  z-index: 1;
 }
 .modal-overlay {
   display: none;
@@ -299,10 +324,13 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  margin: 8px 16px;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 10px;
+  transition: transform 0.2s ease;
+  position: relative;
+  z-index: 1;
 }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--surface); }
@@ -1201,12 +1229,6 @@ function buildEntryCard(entry){
       </div>
     </div>`;
 
-  const delBtn = card.querySelector('.del-entry-btn');
-  setupLongPress(delBtn, ()=>{
-    deleteTarget = { type:'entry', id:entry.id, name:entry.food };
-    document.getElementById('delete-confirm-text').textContent=`確定要刪除「${entry.food}」嗎？`;
-    openModal('delete-confirm-modal');
-  });
   card.querySelector('.rename-entry-btn').addEventListener('click', ()=>openRename(entry));
 
   if(isComposite){
@@ -1215,8 +1237,75 @@ function buildEntryCard(entry){
       renderDailyTab();
     });
   }
-  return card;
+
+  // Wrap in swipe container
+  const wrap = document.createElement('div');
+  wrap.className = 'swipe-wrap';
+  wrap.innerHTML = '<button class="swipe-del-btn">刪除</button>';
+  wrap.appendChild(card);
+  setupSwipeDelete(wrap, card, ()=>{
+    deleteTarget = { type:'entry', id:entry.id, name:entry.food };
+    document.getElementById('delete-confirm-text').textContent=`確定要刪除「${entry.food}」嗎？`;
+    openModal('delete-confirm-modal');
+  });
+  return wrap;
 }
+
+// ============================================================
+// SWIPE TO DELETE
+// ============================================================
+let activeSwipeCard = null;
+
+function closeActiveSwipe() {
+  if (activeSwipeCard) {
+    activeSwipeCard.style.transform = 'translateX(0)';
+    activeSwipeCard = null;
+  }
+}
+
+function setupSwipeDelete(wrap, inner, onDeleteClick) {
+  let sx=0, sy=0, dx=0, moved=false;
+  const W = 80;
+
+  inner.addEventListener('touchstart', e=>{
+    if (activeSwipeCard && activeSwipeCard !== inner) closeActiveSwipe();
+    sx = e.touches[0].clientX;
+    sy = e.touches[0].clientY;
+    dx = 0; moved = false;
+  }, {passive:true});
+
+  inner.addEventListener('touchmove', e=>{
+    const cx = e.touches[0].clientX, cy = e.touches[0].clientY;
+    if (!moved && Math.abs(cy-sy) > Math.abs(cx-sx)) return;
+    moved = true;
+    dx = Math.min(0, Math.max(-W, cx-sx));
+    inner.style.transform = `translateX(${dx}px)`;
+    e.preventDefault();
+  }, {passive:false});
+
+  inner.addEventListener('touchend', ()=>{
+    if (dx < -W/2) {
+      inner.style.transform = `translateX(-${W}px)`;
+      activeSwipeCard = inner;
+    } else {
+      inner.style.transform = 'translateX(0)';
+      activeSwipeCard = null;
+    }
+    dx = 0; moved = false;
+  });
+
+  wrap.querySelector('.swipe-del-btn').addEventListener('click', ()=>{
+    closeActiveSwipe();
+    onDeleteClick();
+  });
+}
+
+// Close swipe when tapping outside
+document.addEventListener('touchstart', e=>{
+  if (activeSwipeCard && !activeSwipeCard.closest('.swipe-wrap')?.contains(e.target)) {
+    closeActiveSwipe();
+  }
+}, {passive:true});
 
 // ============================================================
 // LONG PRESS
@@ -1429,23 +1518,24 @@ function renderLibraryTab(){
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
-        <button class="del-tmpl-btn" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;" title="長按刪除">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="5 7 15 7"/><line x1="8" y1="7" x2="8" y2="15"/><line x1="12" y1="7" x2="12" y2="15"/><path d="M7 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><rect x="4" y="7" width="12" height="9" rx="2"/></svg>
-        </button>
         <button class="add-meal-btn" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--accent);white-space:nowrap;font-family:'Noto Sans TC',sans-serif;">+ 加入餐點</button>
       </div>`;
-    setupLongPress(card.querySelector('.del-tmpl-btn'),()=>{
-      deleteTarget={type:'template',id:t.id,name:t.name};
-      document.getElementById('delete-confirm-text').textContent=`確定要刪除「${t.name}」嗎？`;
-      openModal('delete-confirm-modal');
-    });
     card.querySelector('.add-meal-btn').addEventListener('click',()=>{
       servingTarget=t;
       document.getElementById('serving-food-name').textContent=t.name+` (${rnd(t.calories,1)} kcal / 份)`;
       document.getElementById('serving-input').value='1';
       openModal('serving-modal');
     });
-    list.appendChild(card);
+    const wrap=document.createElement('div');
+    wrap.className='swipe-wrap';
+    wrap.innerHTML='<button class="swipe-del-btn">刪除</button>';
+    wrap.appendChild(card);
+    setupSwipeDelete(wrap,card,()=>{
+      deleteTarget={type:'template',id:t.id,name:t.name};
+      document.getElementById('delete-confirm-text').textContent=`確定要刪除「${t.name}」嗎？`;
+      openModal('delete-confirm-modal');
+    });
+    list.appendChild(wrap);
   });
 }
 
