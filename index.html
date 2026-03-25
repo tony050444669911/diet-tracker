@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>飲食記帳本</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #242424;
+    --border: #2e2e2e;
+    --accent: #c8f96e;
+    --accent2: #f9c86e;
+    --accent3: #6eb4f9;
+    --text: #f0f0f0;
+    --muted: #888;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans TC', sans-serif;
+    min-height: 100vh;
+    max-width: 430px;
+    margin: 0 auto;
+    position: relative;
+    overflow-x: hidden;
+  }
+  .mono { font-family: 'DM Mono', monospace; }
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.5;
+  }
+  .header-date {
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .big-number {
+    font-size: 4.5rem;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -3px;
+    color: var(--accent);
+  }
+  .big-number-unit {
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0;
+  }
+  .macro-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .macro-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 10px 0;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.2s;
+  }
+  .tab-btn.active {
+    color: var(--text);
+  }
+  .tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px;
+  }
+  .food-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    animation: slideIn 0.3s ease forwards;
+  }
+  .food-card:hover {
+    background: var(--surface2);
+    border-color: #444;
+    transform: translateY(-1px);
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .food-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+  .calories-badge {
+    background: rgba(200, 249, 110, 0.12);
+    color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .input-field {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.9rem;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-field:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(200, 249, 110, 0.08);
+  }
+  .input-field::placeholder { color: var(--muted); }
+  .add-btn {
+    background: var(--accent);
+    color: #0f0f0f;
+    border: none;
+    border-radius: 14px;
+    padding: 15px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+  .add-btn:hover {
+    background: #d9ff7a;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(200, 249, 110, 0.25);
+  }
+  .add-btn:active { transform: translateY(0); }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    flex: 1;
+  }
+  .ring-container {
+    position: relative;
+    width: 120px;
+    height: 120px;
+  }
+  .ring-svg {
+    transform: rotate(-90deg);
+  }
+  .ring-bg {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 10;
+  }
+  .ring-fill {
+    fill: none;
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .ring-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .section-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .delete-btn {
+    background: rgba(255,80,80,0.12);
+    color: #ff6060;
+    border: none;
+    border-radius: 8px;
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .delete-btn:hover { background: rgba(255,80,80,0.25); }
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 430px;
+    max-width: 100vw;
+    background: rgba(15,15,15,0.92);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    padding: 8px 0 env(safe-area-inset-bottom, 8px);
+    display: flex;
+    z-index: 100;
+  }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .api-note {
+    background: rgba(200, 249, 110, 0.05);
+    border: 1px dashed rgba(200, 249, 110, 0.3);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-family: 'DM Mono', monospace;
+  }
+  .week-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 80px;
+  }
+  .week-bar-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .week-bar-fill {
+    width: 100%;
+    border-radius: 4px 4px 0 0;
+    background: var(--surface2);
+    transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    min-height: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+  .week-bar-fill.today {
+    background: var(--accent);
+  }
+  .week-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 40%;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px 4px 0 0;
+  }
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-overlay.open {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .modal-sheet {
+    background: var(--surface);
+    border-radius: 24px 24px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    padding: 24px 20px 40px;
+    width: 100%;
+    max-width: 430px;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.34, 1.2, 0.64, 1);
+  }
+  .modal-overlay.open .modal-sheet {
+    transform: translateY(0);
+  }
+
+  /* ── Tablet / Desktop ── */
+  @media (min-width: 768px) {
+    html { background: #080808; }
+
+    /* Two-column layout: sidebar (stats) + main (tabs + panels) */
+    body {
+      max-width: 860px;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: auto 1fr;
+      align-items: start;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+
+    /* Sidebar: header/stats stays fixed on the left */
+    #sidebar {
+      grid-column: 1;
+      grid-row: 1 / 3;
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      padding-bottom: 24px;
+    }
+
+    /* Tabs row */
+    #tabrow {
+      grid-column: 2;
+      grid-row: 1;
+      position: sticky;
+      top: 0;
+      background: rgba(15,15,15,0.95);
+      backdrop-filter: blur(12px);
+      z-index: 10;
+    }
+
+    /* Panels */
+    .panel {
+      grid-column: 2;
+      grid-row: 2;
+      max-height: calc(100vh - 45px) !important;
+    }
+
+    /* Hide mobile bottom nav on tablet */
+    .bottom-nav { display: none !important; }
+
+    /* Modal wider on tablet */
+    .modal-sheet { max-width: 540px; border-radius: 24px; }
+    .modal-overlay { align-items: center; }
+  }
+  .scroll-area {
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .scroll-area::-webkit-scrollbar { display: none; }
+  .loading-dot {
+    display: inline-block;
+    animation: pulse 1.4s ease infinite;
+  }
+  .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse {
+    0%, 80%, 100% { opacity: 0.3; }
+    40% { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<!-- ══════════════════════════════════════════
+     SIDEBAR (header + stats) — tablet left col
+══════════════════════════════════════════ -->
+<div id="sidebar">
+<div class="px-5 pt-10 pb-3">
+  <div class="flex items-center justify-between mb-1">
+    <div>
+      <div class="header-date" id="todayLabel">今日</div>
+      <div class="header-date" id="todayDate" style="font-size:0.8rem;color:#aaa;margin-top:2px;letter-spacing:0.05em"></div>
+    </div>
+    <button onclick="openAddModal()" style="background:var(--accent);color:#0f0f0f;border:none;border-radius:50%;width:40px;height:40px;font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;transition:all 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">+</button>
+  </div>
+  <!-- Big calorie display -->
+  <div class="mt-4 mb-2">
+    <div class="big-number mono" id="totalCalories">0</div>
+    <div style="color:var(--muted);font-size:0.8rem;margin-top:2px">kcal 今日攝取</div>
+  </div>
+  <!-- Macro summary -->
+  <div class="flex gap-3 mt-4">
+    <div style="flex:1">
+      <div class="flex justify-between mb-1" style="font-size:0.72rem;">
+        <span style="color:var(--accent3)">蛋白質</span>
+        <span class="mono" id="proteinTotal" style="color:var(--muted)">0g</span>
+      </div>
+      <div class="macro-bar"><div class="macro-bar-fill" id="proteinBar" style="background:var(--accent3);width:0%"></div></div>
+    </div>
+    <div style="flex:1">
+      <div class="flex justify-between mb-1" style="font-size:0.72rem;">
+        <span style="color:var(--accent2)">碳水</span>
+        <span class="mono" id="carbsTotal" style="color:var(--muted)">0g</span>
+      </div>
+      <div class="macro-bar"><div class="macro-bar-fill" id="carbsBar" style="background:var(--accent2);width:0%"></div></div>
+    </div>
+    <div style="flex:1">
+      <div class="flex justify-between mb-1" style="font-size:0.72rem;">
+        <span style="color:#f96e6e">脂肪</span>
+        <span class="mono" id="fatTotal" style="color:var(--muted)">0g</span>
+      </div>
+      <div class="macro-bar"><div class="macro-bar-fill" id="fatBar" style="background:#f96e6e;width:0%"></div></div>
+    </div>
+  </div>
+  <!-- Budget -->
+  <div class="flex items-center justify-between mt-3 pt-3" style="border-top:1px solid var(--border)">
+    <span style="font-size:0.8rem;color:var(--muted)">今日花費</span>
+    <span class="mono" id="totalPrice" style="font-size:1.1rem;color:var(--accent2);font-weight:600">NT$0</span>
+  </div>
+</div>
+</div><!-- /sidebar -->
+
+<!-- ══════════════════════════════════════════
+     TABS
+══════════════════════════════════════════ -->
+<div id="tabrow" class="flex px-5" style="border-bottom:1px solid var(--border)">
+  <button class="tab-btn active" onclick="switchTab('daily',this)" id="tab-daily">日常</button>
+  <button class="tab-btn" onclick="switchTab('analysis',this)" id="tab-analysis">分析</button>
+  <button class="tab-btn" onclick="switchTab('settings',this)" id="tab-settings">設定</button>
+</div>
+<!-- ══════════════════════════════════════════
+     PANEL: DAILY
+══════════════════════════════════════════ -->
+<div id="panel-daily" class="panel active px-5 pt-4 pb-32 scroll-area" style="max-height:calc(100vh - 300px); overflow-y:auto">
+  <!-- API sync button -->
+  <div class="api-note mb-4 flex items-center justify-between">
+    <span>🔗 Google 試算表尚未連接</span>
+    <button onclick="syncFromSheet()" style="background:rgba(200,249,110,0.15);color:var(--accent);border:1px solid rgba(200,249,110,0.3);border-radius:8px;padding:4px 10px;font-size:0.72rem;cursor:pointer;font-family:inherit">同步</button>
+  </div>
+  <!-- Date switcher -->
+  <div class="flex items-center justify-between mb-3">
+    <div class="section-label" style="margin-bottom:0">飲食紀錄</div>
+    <div class="flex gap-1">
+      <button onclick="changeDate(-1)" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:4px 10px;font-size:0.8rem;cursor:pointer">◀</button>
+      <span id="dateSwitcherLabel" style="font-size:0.8rem;color:var(--muted);padding:4px 8px;align-self:center"></span>
+      <button onclick="changeDate(1)" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:4px 10px;font-size:0.8rem;cursor:pointer">▶</button>
+    </div>
+  </div>
+  <div id="foodList">
+    <div style="text-align:center;color:var(--muted);padding:40px 0;font-size:0.85rem;">
+      今日尚無紀錄<br><span style="font-size:0.75rem;opacity:0.6">點擊 + 新增飲食</span>
+    </div>
+  </div>
+</div>
+<!-- ══════════════════════════════════════════
+     PANEL: ANALYSIS
+══════════════════════════════════════════ -->
+<div id="panel-analysis" class="panel px-5 pt-4 pb-32 scroll-area" style="max-height:calc(100vh - 300px); overflow-y:auto">
+  <!-- Weekly calorie chart -->
+  <div class="section-label">本週熱量趨勢</div>
+  <div class="stat-card mb-4">
+    <div class="week-bar" id="weekChart"></div>
+    <div class="flex mt-3" id="weekLabels" style="gap:6px"></div>
+  </div>
+  <!-- Macro donut -->
+  <div class="section-label">今日三大營養素</div>
+  <div class="flex gap-3 mb-4">
+    <div class="stat-card flex flex-col items-center justify-center" style="min-height:160px">
+      <div class="ring-container">
+        <svg class="ring-svg" width="120" height="120" viewBox="0 0 120 120">
+          <circle class="ring-bg" cx="60" cy="60" r="50"/>
+          <circle class="ring-fill" id="ring-protein" cx="60" cy="60" r="50" stroke="var(--accent3)"
+            stroke-dasharray="314" stroke-dashoffset="314"/>
+          <circle class="ring-fill" id="ring-carbs" cx="60" cy="60" r="50" stroke="var(--accent2)"
+            stroke-dasharray="314" stroke-dashoffset="314" style="opacity:0.7"/>
+          <circle class="ring-fill" id="ring-fat" cx="60" cy="60" r="50" stroke="#f96e6e"
+            stroke-dasharray="314" stroke-dashoffset="314" style="opacity:0.5"/>
+        </svg>
+        <div class="ring-text">
+          <div class="mono" style="font-size:1.4rem;font-weight:700;color:var(--accent)" id="ringCalories">0</div>
+          <div style="font-size:0.65rem;color:var(--muted)">kcal</div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center">
+      <div class="stat-card" style="padding:12px">
+        <div style="font-size:0.65rem;color:var(--accent3);letter-spacing:0.1em;margin-bottom:2px">蛋白質</div>
+        <div class="mono" id="analysisProtein" style="font-size:1.1rem;font-weight:600">0g</div>
+        <div style="font-size:0.7rem;color:var(--muted)" id="proteinPct">—</div>
+      </div>
+      <div class="stat-card" style="padding:12px">
+        <div style="font-size:0.65rem;color:var(--accent2);letter-spacing:0.1em;margin-bottom:2px">碳水</div>
+        <div class="mono" id="analysisCarbs" style="font-size:1.1rem;font-weight:600">0g</div>
+        <div style="font-size:0.7rem;color:var(--muted)" id="carbsPct">—</div>
+      </div>
+      <div class="stat-card" style="padding:12px">
+        <div style="font-size:0.65rem;color:#f96e6e;letter-spacing:0.1em;margin-bottom:2px">脂肪</div>
+        <div class="mono" id="analysisFat" style="font-size:1.1rem;font-weight:600">0g</div>
+        <div style="font-size:0.7rem;color:var(--muted)" id="fatPct">—</div>
+      </div>
+    </div>
+  </div>
+  <!-- Monthly spend -->
+  <div class="section-label">本月花費統計</div>
+  <div class="stat-card mb-4">
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px">本月總計</div>
+    <div class="mono" id="monthlySpend" style="font-size:2rem;font-weight:700;color:var(--accent2)">NT$0</div>
+    <div style="font-size:0.75rem;color:var(--muted);margin-top:4px" id="avgDailySpend">日均 NT$0</div>
+  </div>
+  <!-- Top foods -->
+  <div class="section-label">常見食物 Top 5</div>
+  <div id="topFoods" class="stat-card">
+    <div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:16px">尚無足夠資料</div>
+  </div>
+</div>
+<!-- ══════════════════════════════════════════
+     PANEL: SETTINGS
+══════════════════════════════════════════ -->
+<div id="panel-settings" class="panel px-5 pt-4 pb-32 scroll-area" style="max-height:calc(100vh - 300px); overflow-y:auto">
+  <div class="section-label">Google 試算表連接</div>
+  <div class="stat-card mb-4">
+    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:12px;line-height:1.7">
+      將你的 Apps Script API URL 貼入下方，即可從試算表自動同步資料。
+    </div>
+    <input type="text" class="input-field mb-3" id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
+    <button class="add-btn" onclick="saveApiUrl()" style="font-size:0.85rem;padding:12px">儲存並測試連線</button>
+    <div id="apiTestResult" style="margin-top:10px;font-size:0.78rem;color:var(--muted)"></div>
+  </div>
+  <div class="section-label">每日目標設定</div>
+  <div class="stat-card mb-4">
+    <div class="flex flex-col gap-3">
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:6px">熱量目標 (kcal)</label>
+        <input type="number" class="input-field" id="goalCalories" placeholder="2000" />
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:6px">蛋白質目標 (g)</label>
+        <input type="number" class="input-field" id="goalProtein" placeholder="150" />
+      </div>
+      <div>
+        <label style="font-size:0.75rem;color:var(--muted);display:block;margin-bottom:6px">每日預算 (NT$)</label>
+        <input type="number" class="input-field" id="goalBudget" placeholder="300" />
+      </div>
+      <button class="add-btn" onclick="saveGoals()" style="font-size:0.85rem;padding:12px">儲存目標</button>
+    </div>
+  </div>
+  <div class="section-label">資料管理</div>
+  <div class="stat-card">
+    <button onclick="exportData()" style="background:rgba(110,180,249,0.1);color:var(--accent3);border:1px solid rgba(110,180,249,0.3);border-radius:10px;padding:10px 16px;width:100%;font-family:inherit;font-size:0.85rem;cursor:pointer;margin-bottom:10px">匯出 JSON 資料</button>
+    <button onclick="clearAllData()" style="background:rgba(249,110,110,0.1);color:#f96e6e;border:1px solid rgba(249,110,110,0.3);border-radius:10px;padding:10px 16px;width:100%;font-family:inherit;font-size:0.85rem;cursor:pointer">清除所有本地資料</button>
+  </div>
+</div>
+<!-- ══════════════════════════════════════════
+     ADD FOOD MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="addModal" onclick="closeModalOnBg(event)">
+  <div class="modal-sheet">
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px"></div>
+    <div style="font-size:1rem;font-weight:700;margin-bottom:18px">新增飲食紀錄</div>
+    <div class="flex flex-col gap-3">
+      <div class="flex gap-2">
+        <input type="text" class="input-field" id="inputName" placeholder="食物名稱（如：雞腿便當）" style="flex:1" />
+        <input type="text" class="input-field" id="inputEmoji" placeholder="🍱" style="width:56px;text-align:center" />
+      </div>
+      <div class="flex gap-2">
+        <div style="flex:1">
+          <label style="font-size:0.7rem;color:var(--muted);display:block;margin-bottom:4px">熱量 kcal *</label>
+          <input type="number" class="input-field" id="inputCalories" placeholder="500" />
+        </div>
+        <div style="flex:1">
+          <label style="font-size:0.7rem;color:var(--muted);display:block;margin-bottom:4px">價錢 NT$</label>
+          <input type="number" class="input-field" id="inputPrice" placeholder="80" />
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <div style="flex:1">
+          <label style="font-size:0.7rem;color:var(--accent3);display:block;margin-bottom:4px">蛋白質 g</label>
+          <input type="number" class="input-field" id="inputProtein" placeholder="25" />
+        </div>
+        <div style="flex:1">
+          <label style="font-size:0.7rem;color:var(--accent2);display:block;margin-bottom:4px">碳水 g</label>
+          <input type="number" class="input-field" id="inputCarbs" placeholder="60" />
+        </div>
+        <div style="flex:1">
+          <label style="font-size:0.7rem;color:#f96e6e;display:block;margin-bottom:4px">脂肪 g</label>
+          <input type="number" class="input-field" id="inputFat" placeholder="15" />
+        </div>
+      </div>
+      <button class="add-btn mt-1" onclick="addFoodEntry()">＋ 新增</button>
+    </div>
+  </div>
+</div>
+<!-- ══════════════════════════════════════════
+     JS
+══════════════════════════════════════════ -->
+<script>
+// ─── State ─────────────────────────────────
+let currentDate = new Date();
+let allData = JSON.parse(localStorage.getItem('dietData') || '[]');
+let goals = JSON.parse(localStorage.getItem('dietGoals') || '{"calories":2000,"protein":150,"budget":300}');
+// ─── Init ───────────────────────────────────
+function init() {
+  const d = new Date();
+  document.getElementById('todayDate').textContent =
+    d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0');
+  updateAll();
+  buildWeekChart();
+}
+function dateKey(d) {
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function todayKey() {
+  const d = new Date(); return dateKey(d);
+}
+function currentKey() { return dateKey(currentDate); }
+// ─── Computed ────────────────────────────────
+function getEntriesForDate(key) {
+  return allData.filter(e => e.date === key);
+}
+function sumField(entries, field) {
+  return entries.reduce((s,e) => s + (parseFloat(e[field])||0), 0);
+}
+// ─── UI Update ──────────────────────────────
+function updateAll() {
+  const key = currentKey();
+  const entries = getEntriesForDate(key);
+  const cal = sumField(entries,'calories');
+  const pro = sumField(entries,'protein');
+  const carb = sumField(entries,'carbs');
+  const fat = sumField(entries,'fat');
+  const price = sumField(entries,'price');
+  // Header
+  document.getElementById('totalCalories').textContent = Math.round(cal);
+  document.getElementById('proteinTotal').textContent = Math.round(pro)+'g';
+  document.getElementById('carbsTotal').textContent = Math.round(carb)+'g';
+  document.getElementById('fatTotal').textContent = Math.round(fat)+'g';
+  // FIX: was 'NT+Math.round(price) — missing closing quote and $ sign
+  document.getElementById('totalPrice').textContent = 'NT$' + Math.round(price);
+  // Progress bars (% of goal)
+  const gc = goals.calories || 2000;
+  const gp = goals.protein || 150;
+  document.getElementById('proteinBar').style.width = Math.min(pro/gp*100,100)+'%';
+  document.getElementById('carbsBar').style.width = Math.min(carb/(gc*0.5/4)*100,100)+'%';
+  document.getElementById('fatBar').style.width = Math.min(fat/(gc*0.3/9)*100,100)+'%';
+  // Date switcher label
+  const isToday = currentKey() === todayKey();
+  document.getElementById('dateSwitcherLabel').textContent = isToday ? '今天' :
+    (currentDate.getMonth()+1)+'/'+currentDate.getDate();
+  renderFoodList(entries);
+  updateAnalysis();
+}
+function renderFoodList(entries) {
+  const list = document.getElementById('foodList');
+  if (!entries.length) {
+    list.innerHTML = `<div style="text-align:center;color:var(--muted);padding:40px 0;font-size:0.85rem;">今日尚無紀錄<br><span style="font-size:0.75rem;opacity:0.6">點擊 + 新增飲食</span></div>`;
+    return;
+  }
+  const colors = ['#e8f5a3','#fde68a','#bae6fd','#fca5a5','#c4b5fd','#6ee7b7'];
+  list.innerHTML = entries.map((e,i) => {
+    const color = colors[i % colors.length];
+    const emoji = e.emoji || '🍽';
+    return `<div class="food-card mb-2" style="animation-delay:${i*0.05}s">
+      <div class="food-icon" style="background:${color}22;font-size:1.4rem">${emoji}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.88rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.name}</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:2px">
+          <span style="color:var(--accent3)">${e.protein||0}g蛋白</span> ·
+          <span style="color:var(--accent2)">${e.carbs||0}g碳水</span> ·
+          <span style="color:#f96e6e">${e.fat||0}g脂肪</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <span class="calories-badge">${e.calories} kcal</span>
+        ${e.price ? `<span style="font-size:0.72rem;color:var(--muted)" class="mono">NT$${e.price}</span>` : ''}
+      </div>
+      <button class="delete-btn" onclick="deleteEntry('${e.id}')">×</button>
+    </div>`;
+  }).join('');
+}
+function updateAnalysis() {
+  const key = currentKey();
+  const entries = getEntriesForDate(key);
+  const cal = sumField(entries,'calories');
+  const pro = sumField(entries,'protein');
+  const carb = sumField(entries,'carbs');
+  const fat = sumField(entries,'fat');
+  document.getElementById('ringCalories').textContent = Math.round(cal);
+  document.getElementById('analysisProtein').textContent = Math.round(pro)+'g';
+  document.getElementById('analysisCarbs').textContent = Math.round(carb)+'g';
+  document.getElementById('analysisFat').textContent = Math.round(fat)+'g';
+  // Macro calories
+  const total_kcal = pro*4 + carb*4 + fat*9;
+  if (total_kcal > 0) {
+    document.getElementById('proteinPct').textContent = Math.round(pro*4/total_kcal*100)+'% 熱量來源';
+    document.getElementById('carbsPct').textContent = Math.round(carb*4/total_kcal*100)+'% 熱量來源';
+    document.getElementById('fatPct').textContent = Math.round(fat*9/total_kcal*100)+'% 熱量來源';
+  }
+  // Ring chart (simplified - show protein arc)
+  const circumference = 314;
+  if (cal > 0) {
+    const pOff = circumference - (pro*4/cal) * circumference;
+    const cOff = circumference - (carb*4/cal) * circumference;
+    const fOff = circumference - (fat*9/cal) * circumference;
+    document.getElementById('ring-protein').style.strokeDashoffset = pOff;
+    document.getElementById('ring-carbs').style.strokeDashoffset = cOff;
+    document.getElementById('ring-fat').style.strokeDashoffset = fOff;
+  }
+  // Monthly stats
+  const now = new Date();
+  const monthPrefix = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const monthEntries = allData.filter(e => e.date && e.date.startsWith(monthPrefix));
+  const monthSpend = sumField(monthEntries,'price');
+  const days = new Set(monthEntries.map(e=>e.date)).size || 1;
+  // FIX: was 'NT+Math.round(monthSpend) — missing closing quote and $ sign
+  document.getElementById('monthlySpend').textContent = 'NT$' + Math.round(monthSpend);
+  // FIX: was '日均 NT+Math.round(monthSpend/days) — missing closing quote and $ sign
+  document.getElementById('avgDailySpend').textContent = '日均 NT$' + Math.round(monthSpend/days);
+  // Top foods
+  const freq = {};
+  allData.forEach(e => { freq[e.name] = (freq[e.name]||0)+1; });
+  const sorted = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const tf = document.getElementById('topFoods');
+  if (sorted.length) {
+    tf.innerHTML = sorted.map(([name,count],i) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:${i>0?'8px 0 0':'0 0 0'};${i>0?'border-top:1px solid var(--border)':''}">
+        <div style="font-size:0.85rem">${name}</div>
+        <div class="mono" style="font-size:0.75rem;color:var(--muted)">${count}次</div>
+      </div>`).join('');
+  }
+}
+// ─── Week Chart ─────────────────────────────
+function buildWeekChart() {
+  const chart = document.getElementById('weekChart');
+  const labels = document.getElementById('weekLabels');
+  const days = [];
+  for (let i=6;i>=0;i--) {
+    const d = new Date(); d.setDate(d.getDate()-i);
+    days.push(d);
+  }
+  const dayNames = ['日','一','二','三','四','五','六'];
+  const maxCal = Math.max(...days.map(d => sumField(getEntriesForDate(dateKey(d)),'calories')), 500);
+  chart.innerHTML = days.map(d => {
+    const cal = sumField(getEntriesForDate(dateKey(d)),'calories');
+    const h = Math.max((cal/maxCal)*72, 4);
+    const isToday = dateKey(d) === todayKey();
+    return `<div class="week-bar-item">
+      <div class="week-bar-fill ${isToday?'today':''}" style="height:${h}px"></div>
+    </div>`;
+  }).join('');
+  labels.innerHTML = days.map(d => {
+    const isToday = dateKey(d) === todayKey();
+    return `<div style="flex:1;text-align:center;font-size:0.65rem;color:${isToday?'var(--accent)':'var(--muted)'}">
+      ${dayNames[d.getDay()]}
+    </div>`;
+  }).join('');
+}
+// ─── Data Ops ────────────────────────────────
+function addFoodEntry() {
+  const name = document.getElementById('inputName').value.trim();
+  const cal = parseFloat(document.getElementById('inputCalories').value);
+  if (!name || !cal) { alert('請填入食物名稱與熱量'); return; }
+  const entry = {
+    id: Date.now().toString(),
+    date: currentKey(),
+    name,
+    emoji: document.getElementById('inputEmoji').value || '🍽',
+    calories: cal,
+    protein: parseFloat(document.getElementById('inputProtein').value)||0,
+    carbs: parseFloat(document.getElementById('inputCarbs').value)||0,
+    fat: parseFloat(document.getElementById('inputFat').value)||0,
+    price: parseFloat(document.getElementById('inputPrice').value)||0,
+  };
+  allData.push(entry);
+  saveData();
+  closeModal();
+  clearInputs();
+  updateAll();
+  buildWeekChart();
+}
+function deleteEntry(id) {
+  allData = allData.filter(e => e.id !== id);
+  saveData();
+  updateAll();
+  buildWeekChart();
+}
+function saveData() {
+  localStorage.setItem('dietData', JSON.stringify(allData));
+}
+function clearInputs() {
+  ['inputName','inputEmoji','inputCalories','inputProtein','inputCarbs','inputFat','inputPrice']
+    .forEach(id => document.getElementById(id).value = '');
+}
+function changeDate(delta) {
+  currentDate = new Date(currentDate);
+  currentDate.setDate(currentDate.getDate()+delta);
+  updateAll();
+}
+// ─── Modal ───────────────────────────────────
+function openAddModal() {
+  document.getElementById('addModal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('addModal').classList.remove('open');
+}
+function closeModalOnBg(e) {
+  if (e.target === document.getElementById('addModal')) closeModal();
+}
+// ─── Tabs ────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'analysis') { updateAnalysis(); buildWeekChart(); }
+  if (name === 'settings') {
+    document.getElementById('goalCalories').value = goals.calories || '';
+    document.getElementById('goalProtein').value = goals.protein || '';
+    document.getElementById('goalBudget').value = goals.budget || '';
+    const saved = localStorage.getItem('sheetApiUrl') || '';
+    document.getElementById('apiUrlInput').value = saved;
+  }
+}
+// ─── Settings ────────────────────────────────
+function saveGoals() {
+  goals = {
+    calories: parseFloat(document.getElementById('goalCalories').value)||2000,
+    protein: parseFloat(document.getElementById('goalProtein').value)||150,
+    budget: parseFloat(document.getElementById('goalBudget').value)||300,
+  };
+  localStorage.setItem('dietGoals', JSON.stringify(goals));
+  updateAll();
+  alert('目標已儲存 ✓');
+}
+function saveApiUrl() {
+  const url = document.getElementById('apiUrlInput').value.trim();
+  if (!url) return;
+  localStorage.setItem('sheetApiUrl', url);
+  document.getElementById('apiTestResult').innerHTML =
+    '<span class="loading-dot">●</span><span class="loading-dot">●</span><span class="loading-dot">●</span> 連線測試中...';
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('apiTestResult').textContent = `✓ 連線成功，取得 ${data.length} 筆資料`;
+      document.getElementById('apiTestResult').style.color = 'var(--accent)';
+      importSheetData(data);
+    })
+    .catch(() => {
+      document.getElementById('apiTestResult').textContent = '✗ 連線失敗，請確認 Apps Script 已部署且允許匿名存取';
+      document.getElementById('apiTestResult').style.color = '#f96e6e';
+    });
+}
+function syncFromSheet() {
+  const url = localStorage.getItem('sheetApiUrl');
+  if (!url) {
+    switchTab('settings', document.getElementById('tab-settings'));
+    return;
+  }
+  fetch(url).then(r=>r.json()).then(importSheetData).catch(()=>alert('同步失敗，請檢查設定'));
+}
+function importSheetData(rows) {
+  // Map spreadsheet columns to app format
+  // Columns expected: 日期, 食物名稱, 熱量, 蛋白質, 碳水, 油脂, 價錢
+  rows.forEach(row => {
+    const dateRaw = row['日期'] || row['date'] || '';
+    const d = new Date(dateRaw);
+    if (isNaN(d)) return;
+    const key = dateKey(d);
+    const id = key + '_' + (row['食物名稱']||row['name']||'').replace(/\s/g,'') + '_' + Math.random().toString(36).slice(2,5);
+    if (allData.find(e=>e.id===id)) return; // skip duplicate
+    allData.push({
+      id,
+      date: key,
+      name: row['食物名稱'] || row['name'] || '',
+      emoji: '🍽',
+      calories: parseFloat(row['熱量']||row['calories'])||0,
+      protein: parseFloat(row['蛋白質']||row['protein'])||0,
+      carbs: parseFloat(row['碳水']||row['carbs'])||0,
+      fat: parseFloat(row['油脂']||row['fat'])||0,
+      price: parseFloat(row['價錢']||row['price'])||0,
+    });
+  });
+  saveData();
+  updateAll();
+  buildWeekChart();
+  alert(`✓ 同步完成`);
+}
+// ─── Export ──────────────────────────────────
+function exportData() {
+  const blob = new Blob([JSON.stringify(allData, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'diet-data-'+todayKey()+'.json';
+  a.click();
+}
+function clearAllData() {
+  if (!confirm('確定要清除所有本地資料？此操作不可復原。')) return;
+  allData = [];
+  saveData();
+  updateAll();
+}
+// ─── Start ───────────────────────────────────
+init();
+</script>
+</body>
+</html>
