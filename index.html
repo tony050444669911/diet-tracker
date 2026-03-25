@@ -560,10 +560,10 @@ body {
   <div style="padding:16px;">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;">
       <div style="font-weight:700;margin-bottom:12px;font-size:15px;">Google 試算表連接</div>
-      <label class="form-label">API URL</label>
-      <input type="url" id="sheet-url-input" class="form-input" placeholder="https://script.google.com/...">
-      <button onclick="saveAndTestSheet()" class="btn btn-accent" style="width:100%;margin-top:10px;">儲存並測試</button>
-      <div id="sheet-test-result" style="margin-top:8px;font-size:13px;"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border-radius:8px;">
+        <svg width="8" height="8"><circle cx="4" cy="4" r="4" fill="var(--muted)" id="settings-sheet-dot"/></svg>
+        <span id="settings-sheet-text" style="font-size:13px;color:var(--muted);">載入中...</span>
+      </div>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;">
       <div style="font-weight:700;margin-bottom:12px;font-size:15px;">每日目標</div>
@@ -814,6 +814,11 @@ function jsonResponse(obj){
 
 <script>
 // ============================================================
+// CONFIG — 將下方 URL 換成你自己的 Apps Script 部署網址
+// ============================================================
+const SHEET_API_URL = '';
+
+// ============================================================
 // STATE
 // ============================================================
 let currentDate = todayStr();
@@ -892,7 +897,7 @@ function saveGoalsLS(){ localStorage.setItem('dietGoals',JSON.stringify(goals));
 // ============================================================
 // API
 // ============================================================
-function getSheetUrl(){ return localStorage.getItem('sheetApiUrl')||''; }
+function getSheetUrl(){ return SHEET_API_URL; }
 
 async function apiCall(params) {
   const url = getSheetUrl();
@@ -1317,9 +1322,9 @@ function handlePhotoSelect(event, ctx){
 // SHEET STATUS
 // ============================================================
 function updateSheetStatus(){
-  const url=getSheetUrl();
-  document.getElementById('sheet-dot').setAttribute('fill',url?'#6ee7a0':'var(--muted)');
-  document.getElementById('sheet-status-text').textContent=url?'已連接 Google 試算表':'尚未連接，請前往設定';
+  const ok = SHEET_API_URL !== '';
+  document.getElementById('sheet-dot').setAttribute('fill', ok ? '#6ee7a0' : 'var(--muted)');
+  document.getElementById('sheet-status-text').textContent = ok ? '已連接 Google 試算表' : '尚未設定 API URL，請聯絡開發者';
 }
 
 // ============================================================
@@ -1605,7 +1610,10 @@ document.querySelectorAll('.trend-range-btn').forEach(btn=>{
 // SETTINGS
 // ============================================================
 function loadSettingsForm(){
-  document.getElementById('sheet-url-input').value=getSheetUrl();
+  const ok = SHEET_API_URL !== '';
+  document.getElementById('settings-sheet-dot').setAttribute('fill', ok ? '#6ee7a0' : 'var(--muted)');
+  document.getElementById('settings-sheet-text').textContent = ok ? '已連接 Google 試算表' : '尚未設定 API URL，請聯絡開發者';
+  document.getElementById('settings-sheet-text').style.color = ok ? '#6ee7a0' : 'var(--muted)';
   document.getElementById('goal-cal').value=goals.calories;
   document.getElementById('goal-protein').value=goals.protein;
   document.getElementById('goal-carbs').value=goals.carbs;
@@ -1681,8 +1689,7 @@ async function init(){
   updateSheetStatus();
   renderDailyTab();
 
-  const url=getSheetUrl();
-  if(url){
+  if(SHEET_API_URL !== ''){
     showLoading(true);
     try{
       const res=await apiCall({action:'getAll'});
