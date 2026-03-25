@@ -1958,8 +1958,9 @@ async function init(){
         const presets=foodTemplates.filter(t=>t.id&&presetIds.has(t.id));
         foodTemplates=[...presets,...Object.values(remoteById)];
         saveTemplates();
+        renderLibraryTab();
       }
-    }catch(e){}
+    }catch(e){ showToast('食物庫同步失敗：'+e.message,'error'); }
     showLoading(false);
   }
 }
