@@ -1701,13 +1701,16 @@ async function init(){
           price:num(r.price),emoji:r.emoji||'',
           photo:r.photo||'',detail:r.detail||''
         }));
+        // sheet is truth: replace local non-photo fields with sheet data
         const byId={};
-        allData.forEach(e=>byId[e.id]=e);
-        remote.forEach(e=>{ if(e.food)byId[e.id]={...byId[e.id],...e}; });
+        remote.forEach(e=>{ if(e.id) byId[e.id]=e; });
+        // keep local photo field if exists
+        allData.forEach(e=>{ if(byId[e.id]) byId[e.id].photo=e.photo||''; });
         allData=Object.values(byId);
         saveEntries(); renderDailyTab();
+        showToast('已從試算表同步','success');
       }
-    }catch(e){}
+    }catch(e){ showToast('啟動同步失敗：'+e.message,'error'); }
     try{
       const res2=await apiCall({action:'getAllTemplates'});
       if(res2.status==='ok'){
