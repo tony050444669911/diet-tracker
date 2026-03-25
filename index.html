@@ -832,7 +832,8 @@ function doGet(e) {
     return jsonResponse({status:'ok'});
   }
   if (action === 'delete') {
-    const rows=sheet.getDataRange().getValues(), h=rows[0], col=h.indexOf('id');
+    const rows=sheet.getDataRange().getValues(), h=rows[0];
+    let col=h.indexOf('id'); if(col<0)col=h.indexOf('Column 11'); if(col<0)col=0;
     for(let i=rows.length-1;i>=1;i--) if(String(rows[i][col])===String(p.id)){sheet.deleteRow(i+1);break;}
     return jsonResponse({status:'ok'});
   }
@@ -847,7 +848,8 @@ function doGet(e) {
     return jsonResponse({status:'ok'});
   }
   if (action === 'deleteTemplate') {
-    const rows=tSheet.getDataRange().getValues(), h=rows[0], col=h.indexOf('id');
+    const rows=tSheet.getDataRange().getValues(), h=rows[0];
+    let col=h.indexOf('id'); if(col<0)col=h.indexOf('第 1 欄'); if(col<0)col=0;
     for(let i=rows.length-1;i>=1;i--) if(String(rows[i][col])===String(p.id)){tSheet.deleteRow(i+1);break;}
     return jsonResponse({status:'ok'});
   }
@@ -1264,26 +1266,21 @@ function closeActiveSwipe() {
 }
 
 function setupSwipeDelete(wrap, inner, onDeleteClick) {
-  let sx=0, sy=0, dx=0, moved=false;
+  let sx=0, sy=0, dx=0, moved=false, dragging=false;
   const W = 80;
 
-  inner.addEventListener('touchstart', e=>{
+  function onStart(cx, cy) {
     if (activeSwipeCard && activeSwipeCard !== inner) closeActiveSwipe();
-    sx = e.touches[0].clientX;
-    sy = e.touches[0].clientY;
-    dx = 0; moved = false;
-  }, {passive:true});
-
-  inner.addEventListener('touchmove', e=>{
-    const cx = e.touches[0].clientX, cy = e.touches[0].clientY;
+    sx=cx; sy=cy; dx=0; moved=false;
+  }
+  function onMove(cx, cy, preventDefault) {
     if (!moved && Math.abs(cy-sy) > Math.abs(cx-sx)) return;
-    moved = true;
+    moved=true;
     dx = Math.min(0, Math.max(-W, cx-sx));
     inner.style.transform = `translateX(${dx}px)`;
-    e.preventDefault();
-  }, {passive:false});
-
-  inner.addEventListener('touchend', ()=>{
+    if (preventDefault) preventDefault();
+  }
+  function onEnd() {
     if (dx < -W/2) {
       inner.style.transform = `translateX(-${W}px)`;
       activeSwipeCard = inner;
@@ -1291,7 +1288,30 @@ function setupSwipeDelete(wrap, inner, onDeleteClick) {
       inner.style.transform = 'translateX(0)';
       activeSwipeCard = null;
     }
-    dx = 0; moved = false;
+    dx=0; moved=false; dragging=false;
+  }
+
+  // Touch
+  inner.addEventListener('touchstart', e=>{
+    onStart(e.touches[0].clientX, e.touches[0].clientY);
+  }, {passive:true});
+  inner.addEventListener('touchmove', e=>{
+    onMove(e.touches[0].clientX, e.touches[0].clientY, ()=>e.preventDefault());
+  }, {passive:false});
+  inner.addEventListener('touchend', onEnd);
+
+  // Mouse (desktop)
+  inner.addEventListener('mousedown', e=>{
+    dragging=true;
+    onStart(e.clientX, e.clientY);
+  });
+  document.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    onMove(e.clientX, e.clientY, null);
+  });
+  document.addEventListener('mouseup', e=>{
+    if(!dragging) return;
+    onEnd();
   });
 
   wrap.querySelector('.swipe-del-btn').addEventListener('click', ()=>{
@@ -1300,12 +1320,17 @@ function setupSwipeDelete(wrap, inner, onDeleteClick) {
   });
 }
 
-// Close swipe when tapping outside
+// Close swipe when tapping/clicking outside
 document.addEventListener('touchstart', e=>{
   if (activeSwipeCard && !activeSwipeCard.closest('.swipe-wrap')?.contains(e.target)) {
     closeActiveSwipe();
   }
 }, {passive:true});
+document.addEventListener('mousedown', e=>{
+  if (activeSwipeCard && !activeSwipeCard.closest('.swipe-wrap')?.contains(e.target)) {
+    closeActiveSwipe();
+  }
+});
 
 // ============================================================
 // LONG PRESS
