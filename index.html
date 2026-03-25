@@ -1038,7 +1038,6 @@ async function syncFoodLibrary() {
           price:num(r.price||r['價錢']),emoji:r.emoji||r['圖示']||'',photo:''};
       });
       const presets = foodTemplates.filter(t=>t.id&&presetIds.has(t.id));
-      foodTemplates.filter(t=>t.id&&!presetIds.has(t.id)&&!t.id.startsWith('config_')).forEach(t=>{ remoteById[t.id]={...t,...remoteById[t.id]}; });
       const goalsRows2 = res.rows.filter(r => getRowId(r) === 'config_goals');
       if (goalsRows2.length > 0) {
         try {
@@ -1955,9 +1954,8 @@ async function init(){
             if(g&&g.calories){goals={...goals,...g};saveGoalsLS();}
           }catch(e){}
         }
-        // Merge local user templates
+        // Sheet is truth: only keep presets + what's in sheet
         const presets=foodTemplates.filter(t=>t.id&&presetIds.has(t.id));
-        foodTemplates.filter(t=>t.id&&!presetIds.has(t.id)&&!t.id.startsWith('config_')).forEach(t=>{remoteById[t.id]={...t,...remoteById[t.id]};});
         foodTemplates=[...presets,...Object.values(remoteById)];
         saveTemplates();
       }
